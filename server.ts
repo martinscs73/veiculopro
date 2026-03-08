@@ -177,31 +177,30 @@ async function startServer() {
         'http://127.0.0.1:5173',
       ];
 
+  // extreme debug logging
+  app.use((req, res, next) => {
+    console.log('--- NOVA REQUISIÇÃO ---');
+    console.log(`URL: ${req.url}`);
+    console.log(`Method: ${req.method}`);
+    console.log(`Headers: ${JSON.stringify(req.headers)}`);
+    console.log(`Origin Header: ${req.get('origin')}`);
+    console.log(`Referer: ${req.get('referer')}`);
+    console.log('-----------------------');
+    next();
+  });
+
   app.use(cors({
     origin: (origin, callback) => {
-      console.log(`[CORS] Solicitado por: ${origin || 'Manual/Navegação Direta'}`);
-      // Em produção, vamos liberar tudo para destravar o deploy
-      if (NODE_ENV === 'production' || !origin) {
-        return callback(null, true);
-      }
+      console.log(`[CORS DEBUG] Origin detectada: '${origin}'`);
+      console.log(`[CORS DEBUG] NODE_ENV: ${NODE_ENV}`);
       
-      const allowed = ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'];
-      if (allowed.includes(origin)) {
-        return callback(null, true);
-      }
-      callback(new Error(`CORS: Origin '${origin}' não permitida.`));
+      // FORÇAR LIBERAÇÃO TOTAL EM QUALQUER LUGAR
+      console.log('[CORS DEBUG] Forçando liberação (callback null, true)');
+      return callback(null, true);
     },
     credentials: true,
   }));
   app.use(express.json({ limit: '50mb' }));
-
-  // Request Logging
-  app.use((req, res, next) => {
-    if (req.url.startsWith('/api')) {
-      console.log(`[API] ${req.method} ${req.url}`);
-    }
-    next();
-  });
 
   // Auth Middleware
   const authenticateToken = async (req: any, res: any, next: any) => {
