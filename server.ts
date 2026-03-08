@@ -162,6 +162,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function startServer() {
   console.log('--- INICIANDO SERVIDOR VEICULOPRO V2 (SUPABASE) ---');
+  console.log(`Ambiente: ${NODE_ENV}`);
+  console.log(`Data/Hora: ${new Date().toISOString()}`);
   const app = express();
 
   const allowedOrigins = NODE_ENV === 'production'
@@ -177,26 +179,19 @@ async function startServer() {
 
   app.use(cors({
     origin: (origin, callback) => {
-      // Em produção, vamos ser mais permissivos para garantir que o deploy funcione
-      // No futuro, você pode restringir isso novamente
-      if (!origin || NODE_ENV === 'production') {
+      console.log(`[CORS] Solicitado por: ${origin || 'Manual/Navegação Direta'}`);
+      // Em produção, vamos liberar tudo para destravar o deploy
+      if (NODE_ENV === 'production' || !origin) {
         return callback(null, true);
       }
       
-      const allowed = [
-        'http://localhost:5173',
-        'http://localhost:3000',
-        'http://127.0.0.1:5173'
-      ];
-
+      const allowed = ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'];
       if (allowed.includes(origin)) {
         return callback(null, true);
       }
       callback(new Error(`CORS: Origin '${origin}' não permitida.`));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
   }));
   app.use(express.json({ limit: '50mb' }));
 
