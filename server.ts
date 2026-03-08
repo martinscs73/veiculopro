@@ -177,11 +177,18 @@ async function startServer() {
 
   app.use(cors({
     origin: (origin, callback) => {
-      // Permite requisições sem origin (ex: mobile, Postman em dev)
-      if (!origin && NODE_ENV === 'development') {
+      // Permite requisições sem origin (ex: navegação direta no browser, mobile, Postman)
+      if (!origin) {
         return callback(null, true);
       }
-      if (allowedOrigins.includes(origin || '')) {
+      
+      const extraOrigins = [
+        process.env.APP_URL, 
+        'https://veiculopro.onrender.com',
+        'https://veiculopro.app'
+      ].filter(Boolean) as string[];
+
+      if (allowedOrigins.includes(origin) || extraOrigins.some(eo => origin === eo || origin.startsWith(eo))) {
         return callback(null, true);
       }
       callback(new Error(`CORS: Origin '${origin}' não permitida.`));
