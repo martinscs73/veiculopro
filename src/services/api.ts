@@ -10,7 +10,9 @@ export const api = {
     };
 
     try {
+      console.log(`[API Request] ${options.method || 'GET'} /api${endpoint}`, { headers, body: options.body });
       const response = await fetch(`${API_URL}/api${endpoint}`, { ...options, headers });
+      console.log(`[API Response] ${response.status} ${response.statusText}`);
       
       const contentType = response.headers.get('content-type');
       const isJson = contentType && contentType.includes('application/json');

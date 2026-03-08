@@ -191,14 +191,14 @@ async function startServer() {
 
   app.use(cors({
     origin: (origin, callback) => {
-      console.log(`[CORS DEBUG] Origin detectada: '${origin}'`);
-      console.log(`[CORS DEBUG] NODE_ENV: ${NODE_ENV}`);
-      
-      // FORÇAR LIBERAÇÃO TOTAL EM QUALQUER LUGAR
-      console.log('[CORS DEBUG] Forçando liberação (callback null, true)');
+      console.log(`[CORS DEBUG] Solicitado por: ${origin || 'Manual/Navegação Direta'}`);
+      // Liberação total em produção para destravar o acesso
       return callback(null, true);
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Authorization']
   }));
   app.use(express.json({ limit: '50mb' }));
 
@@ -393,7 +393,7 @@ async function startServer() {
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10,
+    max: 1000, // Aumentado drasticamente para evitar bloqueio por IP compartilhado
     skipSuccessfulRequests: true,
     message: { error: 'Muitas tentativas. Aguarde 15 minutos.' }
   });
