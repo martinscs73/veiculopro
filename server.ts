@@ -17,9 +17,7 @@ const RegisterSchema = z.object({
   email: z.string().email('Email inválido').max(255),
   password: z.string()
     .min(8, 'Senha deve ter no mínimo 8 caracteres')
-    .max(128, 'Senha muito longa')
-    .regex(/[A-Z]/, 'Deve conter ao menos uma letra maiúscula')
-    .regex(/[0-9]/, 'Deve conter ao menos um número'),
+    .max(128, 'Senha muito longa'),
   name: z.string().min(2, 'Nome muito curto').max(100)
 });
 
@@ -402,13 +400,17 @@ async function startServer() {
     const { email, password, name } = req.body;
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
+      const userId = randomUUID();
       const { data: newUser, error } = await supabase
         .from('users')
-        .insert({ email, password: hashedPassword, name })
+        .insert({ id: userId, email, password: hashedPassword, name })
         .select()
         .single();
       
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505') return res.status(400).json({ error: 'Este email já está cadastrado.' });
+        throw error;
+      };
       
       // Initialize defaults
       await supabase.from('service_types').insert([
@@ -420,7 +422,7 @@ async function startServer() {
       res.status(201).json({ id: newUser.id });
     } catch (error: any) {
       console.error('Register Error:', error);
-      res.status(400).json({ error: 'Falha ao registrar usuário' });
+      res.status(400).json({ error: `Erro no cadastro: ${error.message || 'Falha ao registrar usuário'}` });
     }
   });
 
