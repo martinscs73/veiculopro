@@ -1871,6 +1871,15 @@ export default function App() {
             </button>
           </div>
         </div>
+        <AnimatePresence>
+          {toast && (
+            <Toast 
+              message={toast.message} 
+              type={toast.type} 
+              onClose={() => setToast(null)} 
+            />
+          )}
+        </AnimatePresence>
       </div>
     );
   }
