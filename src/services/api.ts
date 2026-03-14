@@ -25,6 +25,11 @@ export const api = {
           const error = await response.json();
           errorMessage = error.error || errorMessage;
           errorDetails = error.details || null;
+          
+          if (error.details && Array.isArray(error.details)) {
+            const detailMsgs = error.details.map((d: any) => d.message).join(', ');
+            errorMessage = `${errorMessage}: ${detailMsgs}`;
+          }
         } else {
           const text = await response.text();
           console.error('Non-JSON error response:', text);
