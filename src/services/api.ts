@@ -68,7 +68,7 @@ export const api = {
     getProfile: () => api.request('/user/profile'),
     updateProfile: (data: any) => api.request('/user/profile', { method: 'PUT', body: JSON.stringify(data) }),
     getGoogleAuthUrl: () => api.request('/auth/google/url'),
-    changePassword: (data: any) => api.request('/auth/change-password', { method: 'PUT', body: JSON.stringify(data) }),
+    changePassword: (data: any) => api.request('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   shifts: {

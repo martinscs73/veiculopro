@@ -451,6 +451,50 @@ async function startServer() {
     }
   });
 
+  app.post('/api/auth/change-password', authenticateToken, async (req: any, res) => {
+    const { currentPassword, newPassword } = req.body;
+    try {
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias.' });
+      }
+
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres.' });
+      }
+
+      // Fetch current user's hashed password
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('password')
+        .eq('id', req.user.id)
+        .single();
+
+      if (error || !user || !user.password) {
+        return res.status(401).json({ error: 'Usuário não encontrado ou sem senha configurada (login via Google?).' });
+      }
+
+      // Verify current password
+      const isValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isValid) {
+        return res.status(401).json({ error: 'A senha atual está incorreta.' });
+      }
+
+      // Hash new password and update
+      const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ password: hashedNewPassword })
+        .eq('id', req.user.id);
+
+      if (updateError) throw updateError;
+
+      res.json({ success: true, message: 'Senha alterada com sucesso.' });
+    } catch (err) {
+      console.error('Change Password Error:', err);
+      res.status(500).json({ error: 'Erro interno ao alterar a senha.' });
+    }
+  });
+
   app.get('/api/user/profile', authenticateToken, async (req: any, res) => {
     try {
       const { data: user, error } = await supabase

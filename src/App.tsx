@@ -514,6 +514,8 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState('profile');
   const [darkMode, setDarkMode] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
 
   const [totalKm, setTotalKm] = useState('');
   const [shiftPlatforms, setShiftPlatforms] = useState([
@@ -861,62 +863,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleEscape);
   }, [confirmModal]);
 
-  const handleBackup = async () => {
-    setLoading(true);
-    try {
-      const data = await api.backup.download();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `veiculopro_backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      showToast('Backup realizado com sucesso!', 'success');
-    } catch (error: any) {
-      showToast('Erro ao gerar backup: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    confirmAction({
-      title: 'Restaurar Backup',
-      message: 'ATENÇÃO: Restaurar um backup substituirá TODOS os dados atuais. Deseja continuar?',
-      confirmLabel: 'Sim, restaurar',
-      variant: 'warning',
-      onConfirm: async () => {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            try {
-              const json = JSON.parse(event.target?.result as string);
-              await api.backup.restore(json);
-              showToast('Dados restaurados com sucesso!', 'success');
-              fetchData();
-              resolve();
-            } catch (error: any) {
-              reject(error);
-            } finally {
-              e.target.value = '';
-            }
-          };
-          reader.onerror = () => {
-            showToast('Erro ao ler arquivo', 'error');
-            e.target.value = '';
-            reject(new Error('Erro ao ler arquivo'));
-          };
-          reader.readAsText(file);
-        });
-      }
-    });
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1208,6 +1155,32 @@ export default function App() {
       } else {
         showToast(error.message, 'error');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordForm.newPassword !== passwordForm.confirmNewPassword) {
+      showToast('As novas senhas não coincidem', 'error');
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      showToast('A nova senha deve ter no mínimo 8 caracteres', 'error');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await api.auth.changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword
+      });
+      showToast('Senha alterada com sucesso!', 'success');
+      setIsPasswordModalOpen(false);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
+    } catch (error: any) {
+      showToast(error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -3798,7 +3771,7 @@ export default function App() {
                   { id: 'subscription', label: 'Assinatura', icon: Crown },
                   { id: 'notifications', label: 'Notificações', icon: Bell },
                   { id: 'security', label: 'Segurança', icon: ShieldCheck },
-                  { id: 'data', label: 'Dados & Backup', icon: Database },
+
                 ].map((item) => (
                   <button
                     key={item.id}
@@ -4063,7 +4036,7 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-4">
                     <h3 className="font-bold text-slate-900 dark:text-white">Segurança</h3>
                     <div className="space-y-4">
-                      <button className="w-full text-left px-4 py-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center justify-between">
+                      <button onClick={() => setIsPasswordModalOpen(true)} className="w-full text-left px-4 py-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center justify-between">
                         <span className="text-sm font-medium dark:text-slate-300">Alterar Senha</span>
                         <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                       </button>
@@ -4075,57 +4048,6 @@ export default function App() {
                   </div>
                 )}
 
-                {settingsTab === 'data' && (
-                  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-6">
-                    <div className="space-y-2">
-                      <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <Database className="w-5 h-5 text-emerald-500" />
-                        Backup e Restauração
-                      </h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Salve seus dados localmente para evitar perdas ou transfira para outro dispositivo.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <button 
-                        onClick={handleBackup}
-                        className="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-all group"
-                      >
-                        <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
-                          <Download className="w-6 h-6" />
-                        </div>
-                        <div className="text-center">
-                          <h4 className="font-bold text-slate-900 dark:text-white">Fazer Backup</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Baixar arquivo .json com seus dados</p>
-                        </div>
-                      </button>
-
-                      <label className="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all group cursor-pointer">
-                        <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
-                          <Upload className="w-6 h-6" />
-                        </div>
-                        <div className="text-center">
-                          <h4 className="font-bold text-slate-900 dark:text-white">Restaurar Backup</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Carregar arquivo .json salvo anteriormente</p>
-                        </div>
-                        <input 
-                          type="file" 
-                          accept=".json"
-                          onChange={handleRestore}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-800 flex gap-3">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-                      <p className="text-xs text-amber-800 dark:text-amber-200">
-                        <strong>Atenção:</strong> Ao restaurar um backup, todos os dados atuais serão substituídos pelos dados do arquivo. Certifique-se de que está carregando o arquivo correto.
-                      </p>
-                    </div>
-                  </div>
-                )}
 
                 {settingsTab === 'subscription' && (
                   <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-6">
@@ -4567,6 +4489,89 @@ export default function App() {
                     {confirmModal.confirmLabel || 'Confirmar'}
                   </button>
                 </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Change Password Modal */}
+        <AnimatePresence>
+          {isPasswordModalOpen && (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsPasswordModalOpen(false)}
+                className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl z-50 overflow-hidden border border-slate-100 dark:border-slate-800"
+              >
+                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                    Alterar Senha
+                  </h3>
+                  <button onClick={() => setIsPasswordModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <form onSubmit={handleChangePassword} className="p-6 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Senha Atual</label>
+                    <input 
+                      type="password" 
+                      required
+                      value={passwordForm.currentPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900 dark:text-white" 
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Nova Senha</label>
+                    <input 
+                      type="password" 
+                      required
+                      minLength={8}
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900 dark:text-white" 
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Confirmar Nova Senha</label>
+                    <input 
+                      type="password" 
+                      required
+                      minLength={8}
+                      value={passwordForm.confirmNewPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmNewPassword: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900 dark:text-white" 
+                    />
+                  </div>
+
+                  <div className="pt-4 flex gap-3">
+                    <button 
+                      type="button" 
+                      onClick={() => setIsPasswordModalOpen(false)}
+                      className="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="submit" 
+                      disabled={loading}
+                      className="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-emerald-200 dark:shadow-none hover:bg-emerald-700 transition-colors disabled:opacity-70 flex justify-center items-center"
+                    >
+                      {loading ? <div className="w-5 h-5 border-2 border-white rounded-full border-t-transparent animate-spin"></div> : 'Salvar Senha'}
+                    </button>
+                  </div>
+                </form>
               </motion.div>
             </>
           )}
