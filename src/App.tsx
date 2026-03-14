@@ -3925,15 +3925,15 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Odômetro Inicial (Cadastro)</label>
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Odômetro na Data de Compra</label>
                         <input 
                           type="number" 
                           value={user?.initial_odometer ?? 0} 
                           onChange={(e) => setUser({ ...user, initial_odometer: parseFloat(e.target.value) || 0 })}
-                          placeholder="KM quando começou a usar o app"
+                          placeholder="KM do veículo quando foi comprado"
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-sm" 
                         />
-                        <p className="text-[10px] text-slate-400">Usado para calcular manutenções a partir do cadastro.</p>
+                        <p className="text-[10px] text-slate-400">Usado como KM base para cálculo de depreciação e manutenções.</p>
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Preço de Compra (R$)</label>
