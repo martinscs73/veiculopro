@@ -2233,6 +2233,70 @@ export default function App() {
               </div>
             </div>
 
+            {/* Advanced PC Only Table */}
+            <div className="hidden lg:block bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4">
+                <span className="bg-emerald-100 text-emerald-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-emerald-900 dark:text-emerald-300">Apenas Computador</span>
+              </div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6 flex items-center gap-2">
+                <Database className="w-5 h-5 text-emerald-500" />
+                Relatório Analítico Completo (Visão Desktop)
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
+                  <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-800 dark:text-slate-400">
+                    <tr>
+                      <th className="px-6 py-3">Data</th>
+                      <th className="px-6 py-3">Início</th>
+                      <th className="px-6 py-3">Fim</th>
+                      <th className="px-6 py-3">KM Percorrido</th>
+                      <th className="px-6 py-3">Ganho Bruto</th>
+                      <th className="px-6 py-3">Custo Est. Combust.</th>
+                      <th className="px-6 py-3">Lucro Líquido Est.</th>
+                      <th className="px-6 py-3 text-right">Rentab. Relativa R$/KM</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupedShifts.slice(0, 15).map((shift: any, index: number) => {
+                      const averageCostPerKm = dashboardStats?.totalKm ? (dashboardStats.totalFuel / dashboardStats.totalKm) : 0.40;
+                      const estimatedFuelCost = (shift.totalKm || 0) * averageCostPerKm;
+                      const netProfit = (shift.totalEarnings || 0) - estimatedFuelCost;
+                      const profitability = (shift.totalKm > 0) ? (shift.totalEarnings / shift.totalKm) : 0;
+                      return (
+                        <tr key={index} className="bg-white border-b dark:bg-slate-900 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                          <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap dark:text-white">
+                            {parseLocalDate(shift.date).toLocaleDateString('pt-BR')}
+                          </td>
+                          <td className="px-6 py-4">{shift.start_time}</td>
+                          <td className="px-6 py-4">{shift.end_time || '--:--'}</td>
+                          <td className="px-6 py-4">{shift.totalKm} km</td>
+                          <td className="px-6 py-4 font-bold text-emerald-600 dark:text-emerald-400">R$ {parseFloat(shift.totalEarnings || 0).toFixed(2)}</td>
+                          <td className="px-6 py-4 text-rose-500">R$ {estimatedFuelCost.toFixed(2)}</td>
+                          <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100">R$ {netProfit.toFixed(2)}</td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={profitability >= 1.5 ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>
+                              R$ {profitability.toFixed(2)}/km
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {groupedShifts.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-8 text-center text-slate-500 italic">
+                          Nenhum turno registrado para exibir a análise completa.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <div className="mt-4 flex justify-between items-center text-xs text-slate-500">
+                  <p>* Mostrando os 15 turnos mais recentes.</p>
+                  <p>* Custo Estimado baseado na média cadastrada de eficiência R$/KM.</p>
+                </div>
+              </div>
+            </div>
+
             {/* Recent Shifts */}
             <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
               <div className="flex justify-between items-center mb-6">
