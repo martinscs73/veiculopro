@@ -3832,6 +3832,26 @@ export default function App() {
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-sm" 
                         />
                       </div>
+                      <div className="space-y-1.5 sm:col-span-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center justify-between py-2">
+                          <div>
+                            <p className="text-sm font-medium text-slate-900 dark:text-white">Modo Escuro</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">Economize bateria em telas OLED</p>
+                          </div>
+                          <button 
+                            onClick={() => setDarkMode(!darkMode)}
+                            className={cn(
+                              "w-10 h-5 rounded-full relative transition-all",
+                              darkMode ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                              darkMode ? "right-1" : "left-1"
+                            )}></div>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3888,14 +3908,17 @@ export default function App() {
                           <option value="Diesel">Diesel</option>
                         </select>
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Odômetro Atual (KM)</label>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Odômetro Atual (Painel do Carro)</label>
                         <input 
                           type="number" 
                           value={user?.vehicle_odometer ?? 0} 
                           onChange={(e) => setUser({ ...user, vehicle_odometer: parseFloat(e.target.value) || 0 })}
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-sm" 
                         />
+                        <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-1 leading-tight">
+                          <span className="font-bold">Nota:</span> Como você também usa o carro fora do trabalho, os KMs do "Encerrar Turno" não batem sozinhos. Sempre atualize este campo copiando o número que está no painel do carro para que a Manutenção avise na hora certa.
+                        </p>
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Odômetro na Data de Compra</label>
@@ -4148,30 +4171,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* App Preferences (Always visible or specific tab?) - Let's put it in a general tab or keep it below */}
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-4">
-                  <h3 className="font-bold text-slate-900 dark:text-white">Preferências do Sistema</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between py-2">
-                      <div>
-                        <p className="text-sm font-medium text-slate-900 dark:text-white">Modo Escuro</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">Economize bateria em telas OLED</p>
-                      </div>
-                      <button 
-                        onClick={() => setDarkMode(!darkMode)}
-                        className={cn(
-                          "w-10 h-5 rounded-full relative transition-all",
-                          darkMode ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"
-                        )}
-                      >
-                        <div className={cn(
-                          "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
-                          darkMode ? "right-1" : "left-1"
-                        )}></div>
-                      </button>
-                    </div>
-                  </div>
-                </div>
+
 
                 <div className="flex gap-4">
                   <button 
