@@ -3174,16 +3174,16 @@ export default function App() {
                           type="button"
                           onClick={() => setIsServiceModalOpen(!isServiceModalOpen)}
                           className={cn(
-                            "flex-1 px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-left flex justify-between items-center cursor-pointer",
+                            "flex-1 min-w-0 px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-left flex justify-between items-center cursor-pointer",
                             formErrors.service_type ? "border-rose-500" : "border-slate-200 dark:border-slate-700"
                           )}
                         >
-                          <span className="truncate">
+                          <span className="truncate pr-2">
                             {selectedServiceItems.length > 0 
                               ? selectedServiceItems.map(s => s.name).join(', ') 
                               : 'Selecione um ou mais serviços...'}
                           </span>
-                          <ChevronRight className={cn("w-5 h-5 text-slate-400 transition-transform", isServiceModalOpen && "rotate-90")} />
+                          <ChevronRight className={cn("w-5 h-5 shrink-0 text-slate-400 transition-transform", isServiceModalOpen && "rotate-90")} />
                         </button>
                         <button 
                           type="button"
