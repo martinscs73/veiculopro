@@ -1997,7 +1997,7 @@ export default function App() {
 
             {showInsight && smartInsight && (
               <div className={cn(
-                "p-4 rounded-2xl flex items-start gap-4 mb-6 border",
+                "p-4 rounded-2xl flex items-start gap-4 mb-6 border relative",
                 smartInsight.type === 'success' ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20" : "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20"
               )}>
                 <div className={cn(
@@ -2021,11 +2021,11 @@ export default function App() {
                 <button 
                   onClick={() => setShowInsight(false)}
                   className={cn(
-                    "hover:opacity-70 transition-opacity",
+                    "shrink-0 hover:opacity-70 transition-opacity p-2 -mr-2 -mt-2",
                     smartInsight.type === 'success' ? "text-emerald-400 dark:text-emerald-300" : "text-indigo-400 dark:text-indigo-300"
                   )}
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             )}
@@ -2684,8 +2684,8 @@ export default function App() {
                 <FormError message={formErrors.platforms} />
                 
                 {/* Add Platform Section */}
-                <div className="flex gap-2 items-end">
-                  <div className="flex-1 space-y-2">
+                <div className="grid grid-cols-2 lg:flex gap-3 items-end">
+                  <div className="col-span-2 lg:col-span-1 lg:flex-1 space-y-2">
                     <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Plataforma</label>
                     <select 
                       id="platform-select"
@@ -2698,7 +2698,7 @@ export default function App() {
                       <option value="Outros">Outros</option>
                     </select>
                   </div>
-                  <div className="flex-1 space-y-2">
+                  <div className="space-y-2 lg:flex-1">
                     <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Valor (R$)</label>
                     <input 
                       id="platform-value"
@@ -2708,7 +2708,7 @@ export default function App() {
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                   </div>
-                  <div className="flex-1 space-y-2">
+                  <div className="space-y-2 lg:flex-1">
                     <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Corridas</label>
                     <input 
                       id="platform-rides"
@@ -2717,7 +2717,7 @@ export default function App() {
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                   </div>
-                  <div className="flex-1 space-y-2">
+                  <div className="col-span-2 sm:col-span-1 space-y-2 lg:flex-1">
                     <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Gorjeta (R$)</label>
                     <input 
                       id="platform-tips"
@@ -2786,7 +2786,7 @@ export default function App() {
                       tipsInput.value = '';
                       input.focus();
                     }}
-                    className="px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-bold shadow-lg shadow-emerald-200 dark:shadow-none"
+                    className="col-span-2 lg:col-span-1 w-full lg:w-auto px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-bold shadow-lg shadow-emerald-200 dark:shadow-none whitespace-nowrap"
                   >
                     Adicionar
                   </button>
@@ -4356,7 +4356,7 @@ export default function App() {
         </header>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-8">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8 pb-32 lg:pb-8">
           <div className="max-w-6xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
