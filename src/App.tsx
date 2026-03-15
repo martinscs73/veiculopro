@@ -388,6 +388,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [editingShift, setEditingShift] = useState<any>(null);
   const [editingMaintenance, setEditingMaintenance] = useState<any>(null);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [selectedServiceItems, setSelectedServiceItems] = useState<{name: string, cost: string}[]>([]);
+  const [serviceSearch, setServiceSearch] = useState('');
   const [editingFixedExpense, setEditingFixedExpense] = useState<any>(null);
   const [editingFuel, setEditingFuel] = useState<any>(null);
   const [confirmModal, setConfirmModal] = useState<{
@@ -936,6 +939,9 @@ export default function App() {
     setActiveTab(tab);
     setFilterStartDate('');
     setFilterEndDate('');
+    setEditingMaintenance(null);
+    setSelectedServiceItems([]);
+    setServiceSearch('');
     if (window.innerWidth < 1024) {
       setIsSidebarOpen(false);
     }
@@ -1122,43 +1128,45 @@ export default function App() {
     try {
       const errors: any = {};
       const odometer = parseFloat(data.odometer as string);
-      const cost = parseFloat(data.cost as string);
+      
+      const isMultiService = selectedServiceItems.length > 0;
+      const combinedServiceType = isMultiService
+        ? selectedServiceItems.map(s => s.name).join(', ')
+        : (data.service_type as string);
+
+      const computedCost = isMultiService
+        ? selectedServiceItems.reduce((acc, curr) => acc + (parseFloat(curr.cost || '0')), 0)
+        : parseFloat(data.cost as string);
 
       if (isNaN(odometer) || odometer <= 0) errors.odometer = 'Informe o odômetro.';
-      if (isNaN(cost) || cost < 0) errors.cost = 'Informe o custo total.';
-      if (!data.service_type) errors.service_type = 'Selecione o tipo de serviço.';
+      if (isNaN(computedCost) || computedCost < 0) errors.cost = 'Informe o custo total.';
+      if (!combinedServiceType) errors.service_type = 'Selecione pelo menos um serviço.';
 
       if (Object.keys(errors).length > 0) {
         setFormErrors(errors);
+        setLoading(false);
         return;
       }
 
+      const maintenanceData = {
+        date: data.date,
+        odometer,
+        service_type: combinedServiceType,
+        category: data.category as string,
+        description: data.description as string,
+        cost: computedCost,
+        attachment_url: editingMaintenance?.attachment_url || '',
+        vehicle_name: data.vehicle_name as string,
+        driver_name: data.driver_name as string
+      };
+
       if (editingMaintenance && editingMaintenance.id) {
-        await api.maintenance.update(editingMaintenance.id, {
-          date: data.date,
-          odometer,
-          service_type: data.service_type as string,
-          category: data.category as string,
-          description: data.description as string,
-          cost,
-          attachment_url: editingMaintenance.attachment_url || '',
-          vehicle_name: data.vehicle_name as string,
-          driver_name: data.driver_name as string
-        });
+        await api.maintenance.update(editingMaintenance.id, maintenanceData);
         setEditingMaintenance(null);
       } else {
-        await api.maintenance.create({
-          date: data.date,
-          odometer,
-          service_type: data.service_type as string,
-          category: data.category as string,
-          description: data.description as string,
-          cost,
-          attachment_url: '',
-          vehicle_name: data.vehicle_name as string,
-          driver_name: data.driver_name as string
-        });
+        await api.maintenance.create(maintenanceData);
       }
+      setSelectedServiceItems([]);
 
       // Update user odometer if higher
       if (user && odometer > (user.vehicle_odometer || 0)) {
@@ -2617,6 +2625,12 @@ export default function App() {
                       <button 
                         onClick={() => {
                           setEditingMaintenance(item);
+                          if (item.service_type) {
+                            const types = item.service_type.split(', ');
+                            setSelectedServiceItems(types.map((t: string, idx: number) => ({ name: t, cost: idx === 0 ? item.cost.toString() : '' })));
+                          } else {
+                            setSelectedServiceItems([]);
+                          }
                           setActiveTab('manutencao');
                         }}
                         className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
@@ -3152,33 +3166,107 @@ export default function App() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Tipo de Serviço</label>
-                    <div className="flex gap-2">
-                      <select 
-                        name="service_type" 
-                        defaultValue={editingMaintenance?.service_type || ''}
-                        className={cn(
-                          "flex-1 px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none",
-                          formErrors.service_type ? "border-rose-500" : "border-slate-200 dark:border-slate-700"
-                        )}
-                      >
-                        <option value="">Selecione um serviço</option>
-                        {serviceTypes.map(type => (
-                          <option key={type.id} value={type.name}>{type.name}</option>
-                        ))}
-                      </select>
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          const name = prompt('Novo Tipo de Serviço:');
-                          if (name) handleAddServiceType(name);
-                        }}
-                        className="px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all"
-                        title="Adicionar novo tipo"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
+                  <div className="space-y-2 relative">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Tipos de Serviço</label>
+                    <div className="relative">
+                      <div className="flex gap-2">
+                        <button 
+                          type="button"
+                          onClick={() => setIsServiceModalOpen(!isServiceModalOpen)}
+                          className={cn(
+                            "flex-1 px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-left flex justify-between items-center cursor-pointer",
+                            formErrors.service_type ? "border-rose-500" : "border-slate-200 dark:border-slate-700"
+                          )}
+                        >
+                          <span className="truncate">
+                            {selectedServiceItems.length > 0 
+                              ? selectedServiceItems.map(s => s.name).join(', ') 
+                              : 'Selecione um ou mais serviços...'}
+                          </span>
+                          <ChevronRight className={cn("w-5 h-5 text-slate-400 transition-transform", isServiceModalOpen && "rotate-90")} />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const name = prompt('Novo Tipo de Serviço:');
+                            if (name) handleAddServiceType(name);
+                          }}
+                          className="px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all shrink-0"
+                          title="Adicionar novo tipo"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {isServiceModalOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-[60] overflow-hidden">
+                          <div className="p-3 border-b border-slate-100 dark:border-slate-700">
+                            <input 
+                              type="text" 
+                              placeholder="Pesquisar serviço..." 
+                              value={serviceSearch}
+                              onChange={(e) => setServiceSearch(e.target.value)}
+                              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-emerald-500 text-slate-900 dark:text-white"
+                            />
+                          </div>
+                          <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                            {serviceTypes
+                              .filter(type => type.name.toLowerCase().includes(serviceSearch.toLowerCase()))
+                              .map(type => {
+                                const isSelected = selectedServiceItems.find(s => s.name === type.name);
+                                return (
+                                  <div key={type.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg">
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <div 
+                                        className={cn(
+                                          "w-5 h-5 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-colors",
+                                          isSelected ? "bg-emerald-500 border-emerald-500" : "border-slate-300 dark:border-slate-600"
+                                        )}
+                                        onClick={() => {
+                                          if (isSelected) {
+                                            setSelectedServiceItems(prev => prev.filter(s => s.name !== type.name));
+                                          } else {
+                                            setSelectedServiceItems(prev => [...prev, { name: type.name, cost: '' }]);
+                                          }
+                                        }}
+                                      >
+                                        {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                                      </div>
+                                      <span 
+                                        className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer truncate"
+                                        onClick={() => {
+                                          if (isSelected) {
+                                            setSelectedServiceItems(prev => prev.filter(s => s.name !== type.name));
+                                          } else {
+                                            setSelectedServiceItems(prev => [...prev, { name: type.name, cost: '' }]);
+                                          }
+                                        }}
+                                      >
+                                        {type.name}
+                                      </span>
+                                    </div>
+                                    {isSelected && (
+                                      <input 
+                                        type="number" 
+                                        step="0.01"
+                                        placeholder="Valor (R$)" 
+                                        value={isSelected.cost}
+                                        onChange={(e) => {
+                                          const newCost = e.target.value;
+                                          setSelectedServiceItems(prev => prev.map(s => s.name === type.name ? { ...s, cost: newCost } : s));
+                                        }}
+                                        className="w-full sm:w-28 px-2 py-1.5 text-sm bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-500/50 rounded text-slate-900 dark:text-white outline-none focus:border-emerald-500"
+                                      />
+                                    )}
+                                  </div>
+                                );
+                            })}
+                            {serviceTypes.length === 0 && (
+                              <p className="p-3 text-center text-sm text-slate-500">Nenhum serviço disponível.</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <FormError message={formErrors.service_type} />
                   </div>
@@ -3213,17 +3301,26 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Custo Total (R$)</label>
-                    <input 
-                      name="cost" 
-                      type="number" 
-                      step="0.01" 
-                      defaultValue={editingMaintenance?.cost || ''} 
-                      placeholder="Ex: 350.00" 
-                      className={cn(
-                        "w-full px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-rose-600 dark:text-rose-400",
-                        formErrors.cost ? "border-rose-500" : "border-slate-200 dark:border-slate-700"
-                      )}
-                    />
+                    {selectedServiceItems.length > 0 ? (
+                      <input 
+                        type="text" 
+                        value={selectedServiceItems.reduce((acc, curr) => acc + (parseFloat(curr.cost || '0')), 0).toFixed(2)}
+                        readOnly
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 font-bold text-rose-600 dark:text-rose-400 opacity-80 cursor-not-allowed"
+                      />
+                    ) : (
+                      <input 
+                        name="cost" 
+                        type="number" 
+                        step="0.01" 
+                        defaultValue={editingMaintenance?.cost || ''} 
+                        placeholder="Ex: 350.00" 
+                        className={cn(
+                          "w-full px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-rose-600 dark:text-rose-400",
+                          formErrors.cost ? "border-rose-500" : "border-slate-200 dark:border-slate-700"
+                        )}
+                      />
+                    )}
                     <FormError message={formErrors.cost} />
                   </div>
                   <div className="space-y-2">
@@ -3237,7 +3334,11 @@ export default function App() {
                   {editingMaintenance && (
                     <button 
                       type="button" 
-                      onClick={() => setEditingMaintenance(null)}
+                      onClick={() => {
+                        setEditingMaintenance(null);
+                        setSelectedServiceItems([]);
+                        setIsServiceModalOpen(false);
+                      }}
                       className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold py-4 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
                     >
                       Cancelar
