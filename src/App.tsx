@@ -39,7 +39,8 @@ import {
   ShieldAlert,
   Zap,
   Loader2,
-  Check
+  Check,
+  Wallet
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -97,23 +98,25 @@ const parseLocalDate = (dateString: string) => {
 
 // Components
 const StatCard = ({ title, value, icon: Icon, trend, color, subtitle }: any) => (
-  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-2">
-    <div className="flex justify-between items-start">
-      <div className={cn("p-2 rounded-xl", color)}>
-        <Icon className="w-5 h-5 text-white" />
+  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col justify-between h-full">
+    <div>
+      <div className="flex justify-between items-start">
+        <div className={cn("p-2 rounded-xl", color)}>
+          <Icon className="w-5 h-5 text-white" />
+        </div>
+        {trend && (
+          <span className={cn("text-xs font-medium px-2 py-1 rounded-full", 
+            trend > 0 ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400")}>
+            {trend > 0 ? '+' : ''}{trend}%
+          </span>
+        )}
       </div>
-      {trend && (
-        <span className={cn("text-xs font-medium px-2 py-1 rounded-full", 
-          trend > 0 ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400")}>
-          {trend > 0 ? '+' : ''}{trend}%
-        </span>
-      )}
+      <div className="mt-4">
+        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">{title}</p>
+        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{value}</h3>
+      </div>
     </div>
-    <div className="mt-4">
-      <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">{title}</p>
-      <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{value}</h3>
-      {subtitle && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 uppercase font-bold tracking-wider">{subtitle}</p>}
-    </div>
+    {subtitle && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-3 uppercase font-bold tracking-wider">{subtitle}</p>}
   </div>
 );
 
@@ -2033,11 +2036,18 @@ export default function App() {
             {/* Header Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               <StatCard 
+                title="Ganhos Bruto" 
+                value={`R$ ${(dashboardStats?.totalEarnings || 0).toFixed(2)}`} 
+                icon={Wallet} 
+                color="bg-emerald-600"
+                subtitle="Valor Recebido"
+              />
+              <StatCard 
                 title="Lucro Real" 
                 value={`R$ ${(dashboardStats?.netProfit || 0).toFixed(2)}`} 
                 icon={DollarSign} 
-                color="bg-emerald-500"
-                subtitle="Ganhos - Gastos"
+                color="bg-emerald-400"
+                subtitle="Líquido (Ganhos - Gastos)"
               />
               <StatCard 
                 title="Rentabilidade" 
@@ -2053,37 +2063,41 @@ export default function App() {
                 color="bg-indigo-500"
                 subtitle="Distância Total"
               />
-              <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Depreciação</h3>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-slate-500 text-white`}>
-                    <TrendingUp className="w-5 h-5" />
+              <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6 flex flex-col justify-between h-full">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Depreciação</h3>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-slate-500 text-white`}>
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
                   </div>
+                  {vehicleDepreciation.valorPago > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Valor Pago:</span>
+                        <span className="font-medium text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorPago.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Valor Atual:</span>
+                        <span className="font-medium text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorAtualEstimado.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-center py-2">
+                      <p className="text-xs text-slate-500 mb-2">Cadastre o valor do veículo para ver a depreciação.</p>
+                      <button 
+                        onClick={() => { setActiveTab('configuracoes'); setSettingsTab('vehicle'); }}
+                        className="text-xs font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-lg"
+                      >
+                        Cadastrar valor
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {vehicleDepreciation.valorPago > 0 ? (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Valor Pago:</span>
-                      <span className="font-medium text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorPago.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Valor Atual:</span>
-                      <span className="font-medium text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorAtualEstimado.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm pt-2 border-t border-slate-100 dark:border-slate-800">
-                      <span className="text-slate-500">Depreciação/mês:</span>
-                      <span className="font-bold text-red-500">R$ {vehicleDepreciation.depreciacaoMensal.toFixed(2)}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <p className="text-sm text-slate-500 mb-3">Cadastre o valor do veículo para ver a depreciação.</p>
-                    <button 
-                      onClick={() => { setActiveTab('configuracoes'); setSettingsTab('vehicle'); }}
-                      className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
-                    >
-                      Cadastrar valor
-                    </button>
+                {vehicleDepreciation.valorPago > 0 && (
+                  <div className="flex justify-between items-center text-sm pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Depreciação/Mês</span>
+                    <span className="font-bold text-rose-500">R$ {vehicleDepreciation.depreciacaoMensal.toFixed(2)}</span>
                   </div>
                 )}
               </div>
