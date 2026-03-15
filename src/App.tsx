@@ -357,6 +357,30 @@ export default function App() {
     };
   }, [shifts, fuelLogs, maintenanceLogs, fixedExpenses, dashboardPeriod]);
 
+  // Gross Earnings of the latest active day
+  const latestDayEarnings = useMemo(() => {
+    if (!shifts || shifts.length === 0) return { dateStr: '--/--', total: 0 };
+    
+    const shiftDates = shifts.map(s => s.date).filter(Boolean);
+    if (shiftDates.length === 0) return { dateStr: '--/--', total: 0 };
+    
+    // Sort descending to find the latest string date (YYYY-MM-DD)
+    const sortedDates = [...new Set(shiftDates)].sort((a, b) => (b as string).localeCompare(a as string));
+    const latestDate = sortedDates[0];
+    
+    const total = shifts
+      .filter(s => s.date === latestDate)
+      .reduce((sum, s) => sum + (s.earnings || 0), 0);
+      
+    try {
+      const dateObj = parseLocalDate(latestDate as string);
+      const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      return { dateStr, total };
+    } catch {
+      return { dateStr: String(latestDate), total };
+    }
+  }, [shifts]);
+
   // Modals
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -2037,10 +2061,10 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               <StatCard 
                 title="Ganhos Bruto" 
-                value={`R$ ${(dashboardStats?.totalEarnings || 0).toFixed(2)}`} 
+                value={`R$ ${(latestDayEarnings.total).toFixed(2)}`} 
                 icon={Wallet} 
                 color="bg-emerald-600"
-                subtitle="Valor Recebido"
+                subtitle={`Acumulado do Dia (${latestDayEarnings.dateStr})`}
               />
               <StatCard 
                 title="Lucro Real" 
