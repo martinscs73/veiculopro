@@ -189,9 +189,15 @@ async function startServer() {
 
   app.use(cors({
     origin: (origin, callback) => {
-      console.log(`[CORS DEBUG] Solicitado por: ${origin || 'Manual/Navegação Direta'}`);
-      // Liberação total em produção para destravar o acesso
-      return callback(null, true);
+      // Manual requests (like Postman/cURL) might not have an origin header
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS REJECTED] Origem não permitida: ${origin}`);
+        callback(new Error('CORS: Acesso não permitido por esta origem.'));
+      }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -531,14 +537,25 @@ async function startServer() {
   // --- Shift Routes ---
   app.get('/api/shifts', authenticateToken, async (req: any, res) => {
     try {
-      const { data, error } = await supabase
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 1000;
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      let query = supabase
         .from('shifts')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
+
+      if (req.query.page || req.query.limit) {
+        query = query.range(from, to);
+      }
+      
+      const { data, error, count } = await query;
       
       if (error) throw error;
-      res.json(data);
+      res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
       res.status(500).json({ error: 'Falha ao buscar turnos' });
     }
@@ -608,14 +625,25 @@ async function startServer() {
   // --- Fuel Routes ---
   app.get('/api/fuel', authenticateToken, async (req: any, res) => {
     try {
-      const { data, error } = await supabase
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 1000;
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      let query = supabase
         .from('fuel_logs')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
+
+      if (req.query.page || req.query.limit) {
+        query = query.range(from, to);
+      }
+
+      const { data, error, count } = await query;
       
       if (error) throw error;
-      res.json(data);
+      res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
       res.status(500).json({ error: 'Falha ao buscar abastecimentos' });
     }
@@ -698,14 +726,25 @@ async function startServer() {
   // --- Maintenance Routes ---
   app.get('/api/maintenance', authenticateToken, async (req: any, res) => {
     try {
-      const { data, error } = await supabase
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 1000;
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      let query = supabase
         .from('maintenance_logs')
-        .select('*')
+        .select('*, service_types(*)', { count: 'exact' })
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
+
+      if (req.query.page || req.query.limit) {
+        query = query.range(from, to);
+      }
+
+      const { data, error, count } = await query;
       
       if (error) throw error;
-      res.json(data);
+      res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
       res.status(500).json({ error: 'Falha ao buscar manutenções' });
     }
@@ -803,14 +842,25 @@ async function startServer() {
   // --- Fixed Expenses Routes ---
   app.get('/api/fixed-expenses', authenticateToken, async (req: any, res) => {
     try {
-      const { data, error } = await supabase
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 1000;
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      let query = supabase
         .from('fixed_expenses')
-        .select('*')
+        .select('*, fixed_expense_types(*)', { count: 'exact' })
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
+
+      if (req.query.page || req.query.limit) {
+        query = query.range(from, to);
+      }
+
+      const { data, error, count } = await query;
       
       if (error) throw error;
-      res.json(data);
+      res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
       res.status(500).json({ error: 'Falha ao buscar despesas fixas' });
     }

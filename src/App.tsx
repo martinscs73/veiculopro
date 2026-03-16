@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
 import { 
   LayoutDashboard, 
   Fuel, 
@@ -42,34 +42,21 @@ import {
   Check,
   Wallet
 } from 'lucide-react';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  AreaChart, 
-  Area,
-  BarChart,
-  Bar,
-  Cell,
-  PieChart,
-  Pie,
-  Legend
-} from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { api } from './services/api';
+import { cn, parseLocalDate, groupShiftsByDate } from './components/utils';
+import { StatCard } from './components/StatCard';
+import { SidebarItem } from './components/SidebarItem';
+import { DateFilter } from './components/DateFilter';
+import { Pagination } from './components/Pagination';
+import { Skeleton, TableSkeleton, ChartSkeleton, type SkeletonProps } from './components/Skeleton';
+import { Eye, EyeOff } from 'lucide-react';
 
-// Utility for tailwind classes
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+const ComparisonBarChart = lazy(() => import('./components/Charts').then(m => ({ default: m.ComparisonBarChart })));
+const DistributionPieChart = lazy(() => import('./components/Charts').then(m => ({ default: m.DistributionPieChart })));
+const MaintenanceBarChart = lazy(() => import('./components/Charts').then(m => ({ default: m.MaintenanceBarChart })));
 
 const MOCK_EXPENSES_CHART = [
   { month: 'Set', fuel: 850, maintenance: 200, profit: 3200 },
@@ -88,37 +75,10 @@ const VEHICLE_INFO = {
   costPerKm: 0.42
 };
 
-const parseLocalDate = (dateString: string) => {
-  if (!dateString || typeof dateString !== 'string') return new Date();
-  const parts = dateString.split('-');
-  if (parts.length !== 3) return new Date();
-  const [year, month, day] = parts.map(Number);
-  return new Date(year, month - 1, day);
-};
+// Shared logic and types are now in src/components/
 
 // Components
-const StatCard = ({ title, value, icon: Icon, trend, color, subtitle }: any) => (
-  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col justify-between h-full">
-    <div>
-      <div className="flex justify-between items-start">
-        <div className={cn("p-2 rounded-xl", color)}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-        {trend && (
-          <span className={cn("text-xs font-medium px-2 py-1 rounded-full", 
-            trend > 0 ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400")}>
-            {trend > 0 ? '+' : ''}{trend}%
-          </span>
-        )}
-      </div>
-      <div className="mt-4">
-        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">{title}</p>
-        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{value}</h3>
-      </div>
-    </div>
-    {subtitle && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-3 uppercase font-bold tracking-wider">{subtitle}</p>}
-  </div>
-);
+// Component definitions moved to src/components/
 
 const LoadingOverlay = () => (
   <motion.div 
@@ -137,22 +97,7 @@ const LoadingOverlay = () => (
   </motion.div>
 );
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => (
-  <button
-    onClick={onClick}
-    title={collapsed ? label : ""}
-    className={cn(
-      "w-full flex items-center rounded-xl transition-all duration-200 group",
-      collapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
-      active 
-        ? "bg-emerald-600 text-white shadow-lg shadow-emerald-200" 
-        : "text-slate-600 dark:text-slate-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
-    )}
-  >
-    <Icon className={cn("w-5 h-5 shrink-0", active ? "text-white" : "text-slate-400 dark:text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400")} />
-    {!collapsed && <span className="font-medium whitespace-nowrap">{label}</span>}
-  </button>
-);
+// SidebarItem moved to src/components/SidebarItem.tsx
 
 const Toast = ({ message, type, onClose }: any) => {
   const icons = {
@@ -208,41 +153,7 @@ const FormError = ({ message }: { message?: string }) => {
   );
 };
 
-const DateFilter = ({ startDate, endDate, onStartChange, onEndChange, onClear }: any) => (
-  <div className="flex flex-wrap items-end gap-4 mb-6 p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
-    <div className="space-y-1.5 flex-1 min-w-[150px]">
-      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Data Inicial</label>
-      <div className="relative">
-        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input 
-          type="date" 
-          value={startDate}
-          onChange={(e) => onStartChange(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-        />
-      </div>
-    </div>
-    <div className="space-y-1.5 flex-1 min-w-[150px]">
-      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Data Final</label>
-      <div className="relative">
-        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input 
-          type="date" 
-          value={endDate}
-          onChange={(e) => onEndChange(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-        />
-      </div>
-    </div>
-    <button 
-      onClick={onClear}
-      className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-rose-500 transition-colors flex items-center gap-2 mb-0.5"
-    >
-      <X className="w-4 h-4" />
-      Limpar
-    </button>
-  </div>
-);
+// DateFilter moved to src/components/DateFilter.tsx
 
 const filterDataByDate = (data: any[], startDate: string, endDate: string) => {
   if (!startDate && !endDate) return data;
@@ -257,9 +168,31 @@ const filterDataByDate = (data: any[], startDate: string, endDate: string) => {
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
   const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState(() => {
+    const hash = window.location.hash.replace('#', '');
+    const validTabs = ['dashboard', 'history_turnos', 'history_abastecimentos', 'history_manutencao', 'history_despesas', 'configuracoes'];
+    return validTabs.includes(hash) ? hash : 'dashboard';
+  });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // Pagination states
+  const [shiftsPage, setShiftsPage] = useState(1);
+  const [shiftsCount, setShiftsCount] = useState(0);
+  const [historyShifts, setHistoryShifts] = useState<any[]>([]);
+  const [fuelPage, setFuelPage] = useState(1);
+  const [fuelCount, setFuelCount] = useState(0);
+  const [historyFuel, setHistoryFuel] = useState<any[]>([]);
+  const [maintenancePage, setMaintenancePage] = useState(1);
+  const [maintenanceCount, setMaintenanceCount] = useState(0);
+  const [historyMaintenance, setHistoryMaintenance] = useState<any[]>([]);
+  const [expensesPage, setExpensesPage] = useState(1);
+  const [expensesCount, setExpensesCount] = useState(0);
+  const [historyExpenses, setHistoryExpenses] = useState<any[]>([]);
+  const [fetchingHistory, setFetchingHistory] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const ITEMS_PER_PAGE = 10;
   const isPro = user?.subscription_plan === 'pro';
 
   React.useEffect(() => {
@@ -287,12 +220,22 @@ export default function App() {
   const [stats, setStats] = useState<any>(null);
   const [dashboardPeriod, setDashboardPeriod] = useState('mes_atual');
   
-  const dashboardStats = useMemo(() => {
+  // Independent periods for cards
+  const [periodGanhos, setPeriodGanhos] = useState('mes_atual');
+  const [periodLucro, setPeriodLucro] = useState('mes_atual');
+  const [periodTotalKm, setPeriodTotalKm] = useState('mes_atual');
+  const [periodRentabilidade, setPeriodRentabilidade] = useState('mes_atual');
+  const [periodRHoraLivre, setPeriodRHoraLivre] = useState('mes_atual');
+  const [periodVelMedia, setPeriodVelMedia] = useState('mes_atual');
+  const [periodMediaLivre, setPeriodMediaLivre] = useState('mes_atual');
+  const [periodCustoComb, setPeriodCustoComb] = useState('mes_atual');
+
+  const calculateStatsForPeriod = (period: string) => {
     const now = new Date();
     let startDate = new Date(0);
     let endDate = new Date('2099-12-31');
 
-    if (dashboardPeriod === 'hoje') {
+    if (period === 'hoje') {
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     } else if (dashboardPeriod === 'semana_atual') {
@@ -342,8 +285,29 @@ export default function App() {
       }
     }
 
+    // Calculate Hours and additional metrics
+    let totalHours = 0;
+    const uniqueDays = new Set<string>();
+
+    filteredShifts.forEach(shift => {
+      if (shift && shift.date) uniqueDays.add(shift.date);
+      if (shift.start_time && shift.end_time) {
+        const [startH, startM] = shift.start_time.split(':').map(Number);
+        const [endH, endM] = shift.end_time.split(':').map(Number);
+        if (!isNaN(startH) && !isNaN(endH)) {
+          let diffHours = (endH + endM/60) - (startH + startM/60);
+          if (diffHours < 0) diffHours += 24; // Crossed midnight
+          totalHours += diffHours;
+        }
+      }
+    });
+
     const netProfit = totalEarnings - totalExpenses;
     const profitability = totalKm > 0 ? (totalEarnings / totalKm) : 0;
+    const netProfitPerHour = totalHours > 0 ? (netProfit / totalHours) : 0;
+    const avgVelocity = totalHours > 0 ? (totalKm / totalHours) : 0;
+    const workingDays = uniqueDays.size;
+    const avgProfitPerDay = workingDays > 0 ? (netProfit / workingDays) : 0;
 
     return {
       totalEarnings,
@@ -353,9 +317,26 @@ export default function App() {
       profitability,
       totalFuel,
       totalMaintenance,
-      totalFixed
+      totalFixed,
+      totalHours,
+      netProfitPerHour,
+      avgVelocity,
+      workingDays,
+      avgProfitPerDay
     };
-  }, [shifts, fuelLogs, maintenanceLogs, fixedExpenses, dashboardPeriod]);
+  };
+
+  const dashboardStats = useMemo(() => calculateStatsForPeriod(dashboardPeriod), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, dashboardPeriod]);
+  
+  // Independent Stats calculations
+  const statsGanhos = useMemo(() => calculateStatsForPeriod(periodGanhos), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodGanhos]);
+  const statsLucro = useMemo(() => calculateStatsForPeriod(periodLucro), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodLucro]);
+  const statsTotalKm = useMemo(() => calculateStatsForPeriod(periodTotalKm), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodTotalKm]);
+  const statsRentabilidade = useMemo(() => calculateStatsForPeriod(periodRentabilidade), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodRentabilidade]);
+  const statsRHoraLivre = useMemo(() => calculateStatsForPeriod(periodRHoraLivre), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodRHoraLivre]);
+  const statsVelMedia = useMemo(() => calculateStatsForPeriod(periodVelMedia), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodVelMedia]);
+  const statsMediaLivre = useMemo(() => calculateStatsForPeriod(periodMediaLivre), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodMediaLivre]);
+  const statsCustoComb = useMemo(() => calculateStatsForPeriod(periodCustoComb), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodCustoComb]);
 
   // Gross Earnings of the latest active day
   const latestDayEarnings = useMemo(() => {
@@ -818,12 +799,26 @@ export default function App() {
         api.fixedExpenses.list(),
         api.fixedExpenseTypes.list()
       ]);
+      
+      const storedGoal = localStorage.getItem('@VeiculoPro:monthly_goal');
+      if (storedGoal) {
+        profile.monthly_goal = parseFloat(storedGoal);
+      }
+      
       setUser(profile);
-      setShifts(shiftsData);
-      setFuelLogs(fuelData);
-      setMaintenanceLogs(maintenanceData);
+      setShifts(shiftsData.data || (Array.isArray(shiftsData) ? shiftsData : []));
+      setShiftsCount(shiftsData.count !== undefined ? shiftsData.count : (Array.isArray(shiftsData) ? shiftsData.length : 0));
+      
+      setFuelLogs(fuelData.data || (Array.isArray(fuelData) ? fuelData : []));
+      setFuelCount(fuelData.count !== undefined ? fuelData.count : (Array.isArray(fuelData) ? fuelData.length : 0));
+      
+      setMaintenanceLogs(maintenanceData.data || (Array.isArray(maintenanceData) ? maintenanceData : []));
+      setMaintenanceCount(maintenanceData.count !== undefined ? maintenanceData.count : (Array.isArray(maintenanceData) ? maintenanceData.length : 0));
+      
+      setFixedExpenses(fixedExpensesData.data || (Array.isArray(fixedExpensesData) ? fixedExpensesData : []));
+      setExpensesCount(fixedExpensesData.count !== undefined ? fixedExpensesData.count : (Array.isArray(fixedExpensesData) ? fixedExpensesData.length : 0));
+
       setServiceTypes(serviceTypesData);
-      setFixedExpenses(fixedExpensesData);
       setFixedExpenseTypes(fixedExpenseTypesData);
       setStats(statsData);
       setDarkMode(!!profile.dark_mode);
@@ -850,6 +845,82 @@ export default function App() {
     }
   };
 
+  const fetchHistoryShifts = async (p: number) => {
+    setFetchingHistory(true);
+    try {
+      const { data, count } = await api.shifts.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
+      setHistoryShifts(data || []);
+      setShiftsCount(typeof count === 'number' ? count : 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setFetchingHistory(false);
+    }
+  };
+
+  const fetchHistoryFuel = async (p: number) => {
+    setFetchingHistory(true);
+    try {
+      const { data, count } = await api.fuel.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
+      setHistoryFuel(data || []);
+      setFuelCount(typeof count === 'number' ? count : 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setFetchingHistory(false);
+    }
+  };
+
+  const fetchHistoryMaintenance = async (p: number) => {
+    setFetchingHistory(true);
+    try {
+      const { data, count } = await api.maintenance.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
+      setHistoryMaintenance(data || []);
+      setMaintenanceCount(typeof count === 'number' ? count : 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setFetchingHistory(false);
+    }
+  };
+
+  const fetchHistoryExpenses = async (p: number) => {
+    setFetchingHistory(true);
+    try {
+      const { data, count } = await api.fixedExpenses.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
+      setHistoryExpenses(data || []);
+      setExpensesCount(typeof count === 'number' ? count : 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setFetchingHistory(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (isAuthenticated && activeTab === 'history_turnos') {
+      fetchHistoryShifts(shiftsPage);
+    }
+  }, [shiftsPage, activeTab, isAuthenticated, filterStartDate, filterEndDate]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && activeTab === 'history_abastecimentos') {
+      fetchHistoryFuel(fuelPage);
+    }
+  }, [fuelPage, activeTab, isAuthenticated, filterStartDate, filterEndDate]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && activeTab === 'history_manutencao') {
+      fetchHistoryMaintenance(maintenancePage);
+    }
+  }, [maintenancePage, activeTab, isAuthenticated]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && activeTab === 'history_despesas') {
+      fetchHistoryExpenses(expensesPage);
+    }
+  }, [expensesPage, activeTab, isAuthenticated]);
+
   React.useEffect(() => {
     const handleOnline = () => showToast('Conexão restabelecida!', 'success');
     const handleOffline = () => showToast('Você está offline. Verifique sua conexão.', 'warning');
@@ -868,6 +939,10 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('auth:expired', handleAuthExpired);
     };
+  }, []);
+
+  React.useEffect(() => {
+    setIsMounted(true);
   }, []);
 
   React.useEffect(() => {
@@ -892,6 +967,23 @@ export default function App() {
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [confirmModal]);
+  
+  // URL Hash Routing Sync
+  React.useEffect(() => {
+    window.location.hash = activeTab;
+  }, [activeTab]);
+
+  React.useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      const validTabs = ['dashboard', 'history_turnos', 'history_abastecimentos', 'history_manutencao', 'history_despesas', 'configuracoes'];
+      if (validTabs.includes(hash) && hash !== activeTab) {
+        setActiveTab(hash);
+      }
+    };
+    window.addEventListener('popstate', handleHashChange);
+    return () => window.removeEventListener('popstate', handleHashChange);
+  }, [activeTab]);
 
 
 
@@ -921,8 +1013,12 @@ export default function App() {
     e.preventDefault();
     try {
       await api.auth.register(authForm);
-      setAuthMode('login');
-      showToast('Conta criada com sucesso! Faça login.');
+      showToast('Conta criada com sucesso! Entrando...');
+      // Auto login after successful registration
+      const { token, user } = await api.auth.login({ email: authForm.email, password: authForm.password });
+      localStorage.setItem('token', token);
+      setIsAuthenticated(true);
+      setUser(user);
     } catch (error: any) {
       showToast(error.message, 'error');
     }
@@ -937,6 +1033,7 @@ export default function App() {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
+    setIsSidebarOpen(false);
     setFilterStartDate('');
     setFilterEndDate('');
     setEditingMaintenance(null);
@@ -1224,11 +1321,20 @@ export default function App() {
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
+      const { monthly_goal, ...userPayload } = user || {};
+
       await api.auth.updateProfile({
-        ...user,
+        ...userPayload,
         dark_mode: darkMode ? 1 : 0,
         notifications_enabled: notificationsEnabled ? 1 : 0
       });
+      
+      if (monthly_goal !== undefined && monthly_goal !== null) {
+        localStorage.setItem('@VeiculoPro:monthly_goal', monthly_goal.toString());
+      } else {
+        localStorage.removeItem('@VeiculoPro:monthly_goal');
+      }
+
       showToast('Configurações atualizadas com sucesso!');
     } catch (error: any) {
       if (error.status === 422 && error.details?.length) {
@@ -1256,7 +1362,7 @@ export default function App() {
     }
   };
 
-  const handleExportPDF = (
+  const handleExportPDF = async (
     exportType: 'summary' | 'full' | 'shifts_only' | 'maintenance_only' | 'fuel_only' | 'expenses_only' = 'full',
     customData?: {
       shifts?: any[];
@@ -1273,6 +1379,8 @@ export default function App() {
       endDate?: string;
     }
   ) => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const primaryColor = { r: 16, g: 185, b: 129 }; // Emerald-600
@@ -1295,7 +1403,7 @@ export default function App() {
 
     // Calculate derived values
     const profit = dataToUse.earnings - dataToUse.expenses;
-    const rentability = dataToUse.km > 0 ? dataToUse.earnings / dataToUse.km : 0;
+    const rentability = dataToUse.km > 0 ? (dataToUse.earnings / dataToUse.km) : 0;
 
     // --- Header ---
     doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
@@ -1831,17 +1939,27 @@ export default function App() {
                 placeholder="seu@email.com"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-400 uppercase">Senha</label>
-              <input 
-                type="password" 
-                required
-                value={authForm.password}
-                onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" 
-                placeholder="••••••••"
-              />
-            </div>
+            <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Senha</label>
+                <div className="relative group">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={authForm.password}
+                    onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                    className="w-full px-4 py-3 pl-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all placeholder:text-slate-400"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <ShieldCheck className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-500 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
             <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all mt-4">
               {authMode === 'login' ? 'Entrar' : 'Criar Conta'}
             </button>
@@ -1893,6 +2011,29 @@ export default function App() {
   }
 
   const renderContent = () => {
+    const renderMediaFilters = (currentPeriod: string, setPeriod: (p: string) => void) => (
+      <>
+        <button 
+          onClick={() => setPeriod('hoje')}
+          className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentPeriod === 'hoje' ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200')}
+        >
+          D
+        </button>
+        <button 
+          onClick={() => setPeriod('semana_atual')}
+          className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentPeriod === 'semana_atual' ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200')}
+        >
+          S
+        </button>
+        <button 
+          onClick={() => setPeriod('mes_atual')}
+          className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentPeriod === 'mes_atual' ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200')}
+        >
+          M
+        </button>
+      </>
+    );
+
     switch (activeTab) {
       case 'dashboard':
         return (
@@ -1912,6 +2053,64 @@ export default function App() {
                 <option value="todos">Todo o Período</option>
               </select>
             </div>
+
+            {/* Metas / Relatório Mensal Rápido */}
+            {dashboardPeriod === 'mes_atual' && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 mb-6 group relative overflow-hidden">
+                <div className="absolute -right-16 -top-16 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Crown className="w-64 h-64 text-emerald-500" />
+                </div>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10">
+                  <div className="flex-1 w-full">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl">
+                        <Crown className="w-5 h-5 text-emerald-500" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">Seu Progresso de Metas</h3>
+                    </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg leading-relaxed">
+                      Atingir suas metas financeiras é crucial. Baseado no seu lucro líquido, acompanhe sua meta mensal.
+                      <br/>
+                      <button 
+                        onClick={() => { setActiveTab('configuracoes'); setSettingsTab('profile'); }}
+                        className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline mt-1 inline-flex items-center gap-1"
+                      >
+                        <Settings className="w-3 h-3" /> Configurar Meta
+                      </button>
+                    </p>
+                  </div>
+                  
+                  <div className="w-full sm:w-1/2 mt-4 sm:mt-0">
+                    <div className="flex justify-between items-end mb-2">
+                      <div>
+                        <span className="text-2xl font-black text-slate-900 dark:text-white">
+                          R$ {(dashboardStats?.netProfit || 0).toFixed(0)}
+                        </span>
+                        <span className="text-sm text-slate-500 dark:text-slate-400"> / R$ {(user?.monthly_goal || 4000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Meta)</span>
+                      </div>
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                        {Math.min(100, ((dashboardStats?.netProfit || 0) / (user?.monthly_goal || 4000)) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    
+                    <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                      <div 
+                        className={cn(
+                          "h-full rounded-full transition-all duration-1000 ease-out",
+                          (dashboardStats?.netProfit || 0) >= (user?.monthly_goal || 4000) ? "bg-emerald-500" : "bg-gradient-to-r from-emerald-400 to-emerald-600"
+                        )}
+                        style={{ width: `${Math.max(0, Math.min(100, ((dashboardStats?.netProfit || 0) / (user?.monthly_goal || 4000)) * 100))}%` }}
+                      />
+                    </div>
+                    {((dashboardStats?.netProfit || 0) < (user?.monthly_goal || 4000)) && (
+                      <p className="text-xs text-slate-400 mt-2 text-right">
+                        Faltam <strong className="text-slate-700 dark:text-slate-300">R$ {((user?.monthly_goal || 4000) - (dashboardStats?.netProfit || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> para bater a meta.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Maintenance Status Grid */}
             <div className="space-y-3 mb-6">
@@ -2069,76 +2268,67 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               <StatCard 
                 title="Ganhos Bruto" 
-                value={`R$ ${(latestDayEarnings.total).toFixed(2)}`} 
+                value={`R$ ${(statsGanhos?.totalEarnings || 0).toFixed(2)}`} 
                 icon={Wallet} 
                 color="bg-emerald-600"
-                subtitle={`Acumulado do Dia (${latestDayEarnings.dateStr})`}
+                subtitle={periodGanhos === 'hoje' ? `Acumulado do Dia (${latestDayEarnings.dateStr})` : periodGanhos === 'semana_atual' ? 'Esta Semana' : 'Este Mês'}
+                actions={renderMediaFilters(periodGanhos, setPeriodGanhos)}
               />
               <StatCard 
                 title="Lucro Real" 
-                value={`R$ ${(dashboardStats?.netProfit || 0).toFixed(2)}`} 
+                value={`R$ ${(statsLucro?.netProfit || 0).toFixed(2)}`} 
                 icon={DollarSign} 
                 color="bg-emerald-400"
                 subtitle="Líquido (Ganhos - Gastos)"
+                actions={renderMediaFilters(periodLucro, setPeriodLucro)}
               />
               <StatCard 
                 title="Rentabilidade" 
-                value={`R$ ${(dashboardStats?.profitability || 0).toFixed(2)}/km`} 
+                value={`R$ ${(statsRentabilidade?.profitability || 0).toFixed(2)}/km`} 
                 icon={TrendingUp} 
                 color="bg-blue-500"
                 subtitle="Média por KM rodado"
+                actions={renderMediaFilters(periodRentabilidade, setPeriodRentabilidade)}
               />
               <StatCard 
                 title="Total KM" 
-                value={`${(dashboardStats?.totalKm || 0).toFixed(0)} km`} 
+                value={`${(statsTotalKm?.totalKm || 0).toFixed(0)} km`} 
                 icon={Navigation} 
                 color="bg-indigo-500"
                 subtitle="Distância Total"
+                actions={renderMediaFilters(periodTotalKm, setPeriodTotalKm)}
               />
-              <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6 flex flex-col justify-between h-full">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Depreciação</h3>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-slate-500 text-white`}>
-                      <TrendingUp className="w-5 h-5" />
-                    </div>
-                  </div>
-                  {vehicleDepreciation.valorPago > 0 ? (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Valor Pago:</span>
-                        <span className="font-medium text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorPago.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Valor Atual:</span>
-                        <span className="font-medium text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorAtualEstimado.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-center py-2">
-                      <p className="text-xs text-slate-500 mb-2">Cadastre o valor do veículo para ver a depreciação.</p>
-                      <button 
-                        onClick={() => { setActiveTab('configuracoes'); setSettingsTab('vehicle'); }}
-                        className="text-xs font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-lg"
-                      >
-                        Cadastrar valor
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {vehicleDepreciation.valorPago > 0 && (
-                  <div className="flex justify-between items-center text-sm pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Depreciação/Mês</span>
-                    <span className="font-bold text-rose-500">R$ {vehicleDepreciation.depreciacaoMensal.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
+              <StatCard 
+                title="R$/Hora Livre" 
+                value={`R$ ${(statsRHoraLivre?.netProfitPerHour || 0).toFixed(2)}`} 
+                icon={Clock} 
+                color="bg-purple-500"
+                subtitle={`${(statsRHoraLivre?.totalHours || 0).toFixed(1)}h Trabalhadas`}
+                actions={renderMediaFilters(periodRHoraLivre, setPeriodRHoraLivre)}
+              />
+              <StatCard 
+                title="Velocidade Média" 
+                value={`${(statsVelMedia?.avgVelocity || 0).toFixed(1)} km/h`} 
+                icon={Wind} 
+                color="bg-orange-500"
+                subtitle="Operacional c/ Cliente"
+                actions={renderMediaFilters(periodVelMedia, setPeriodVelMedia)}
+              />
+              <StatCard 
+                title="Média Livre/Dia" 
+                value={`R$ ${(statsMediaLivre?.avgProfitPerDay || 0).toFixed(2)}`} 
+                icon={TrendingUp} 
+                color="bg-teal-500"
+                subtitle={`Baseado em ${statsMediaLivre?.workingDays || 0} dias ativos`}
+                actions={renderMediaFilters(periodMediaLivre, setPeriodMediaLivre)}
+              />
               <StatCard 
                 title="Custo Combust./KM" 
-                value={`R$ ${((dashboardStats?.totalFuel || 0) / (dashboardStats?.totalKm || 1)).toFixed(2)}`} 
+                value={`R$ ${((statsCustoComb?.totalFuel || 0) / (statsCustoComb?.totalKm || 1)).toFixed(2)}`} 
                 icon={Fuel} 
                 color="bg-amber-500"
                 subtitle="Média Geral"
+                actions={renderMediaFilters(periodCustoComb, setPeriodCustoComb)}
               />
             </div>
 
@@ -2157,19 +2347,11 @@ export default function App() {
                   </div>
                 </div>
                 <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyChartData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                        formatter={(value: number) => `R$ ${value.toFixed(2)}`}
-                      />
-                      <Bar dataKey="earnings" fill="#10b981" radius={[4, 4, 0, 0]} name="Ganhos" />
-                      <Bar dataKey="expenses" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Gastos" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {isMounted && (
+                    <Suspense fallback={<ChartSkeleton />}>
+                      <ComparisonBarChart data={monthlyChartData} />
+                    </Suspense>
+                  )}
                 </div>
               </div>
 
@@ -2177,27 +2359,9 @@ export default function App() {
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
                   <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Ganhos por App</h3>
                   <div className="h-[200px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={platformData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={80}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {platformData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          formatter={(value: number) => `R$ ${value.toFixed(2)}`}
-                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <Suspense fallback={<ChartSkeleton />}>
+                      <DistributionPieChart data={platformData} />
+                    </Suspense>
                   </div>
                   <div className="space-y-3 mt-4">
                     {platformData.map((item) => (
@@ -2241,70 +2405,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Advanced PC Only Table */}
-            <div className="hidden lg:block bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4">
-                <span className="bg-emerald-100 text-emerald-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-emerald-900 dark:text-emerald-300">Apenas Computador</span>
-              </div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6 flex items-center gap-2">
-                <Database className="w-5 h-5 text-emerald-500" />
-                Relatório Analítico Completo (Visão Desktop)
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
-                  <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-800 dark:text-slate-400">
-                    <tr>
-                      <th className="px-6 py-3">Data</th>
-                      <th className="px-6 py-3">Início</th>
-                      <th className="px-6 py-3">Fim</th>
-                      <th className="px-6 py-3">KM Percorrido</th>
-                      <th className="px-6 py-3">Ganho Bruto</th>
-                      <th className="px-6 py-3">Custo Est. Combust.</th>
-                      <th className="px-6 py-3">Lucro Líquido Est.</th>
-                      <th className="px-6 py-3 text-right">Rentab. Relativa R$/KM</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groupedShifts.slice(0, 15).map((shift: any, index: number) => {
-                      const averageCostPerKm = dashboardStats?.totalKm ? (dashboardStats.totalFuel / dashboardStats.totalKm) : 0.40;
-                      const estimatedFuelCost = (shift.totalKm || 0) * averageCostPerKm;
-                      const netProfit = (shift.totalEarnings || 0) - estimatedFuelCost;
-                      const profitability = (shift.totalKm > 0) ? (shift.totalEarnings / shift.totalKm) : 0;
-                      return (
-                        <tr key={index} className="bg-white border-b dark:bg-slate-900 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                          <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap dark:text-white">
-                            {parseLocalDate(shift.date).toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-6 py-4">{shift.start_time}</td>
-                          <td className="px-6 py-4">{shift.end_time || '--:--'}</td>
-                          <td className="px-6 py-4">{shift.totalKm} km</td>
-                          <td className="px-6 py-4 font-bold text-emerald-600 dark:text-emerald-400">R$ {parseFloat(shift.totalEarnings || 0).toFixed(2)}</td>
-                          <td className="px-6 py-4 text-rose-500">R$ {estimatedFuelCost.toFixed(2)}</td>
-                          <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100">R$ {netProfit.toFixed(2)}</td>
-                          <td className="px-6 py-4 text-right">
-                            <span className={profitability >= 1.5 ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>
-                              R$ {profitability.toFixed(2)}/km
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {groupedShifts.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="px-6 py-8 text-center text-slate-500 italic">
-                          Nenhum turno registrado para exibir a análise completa.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-                <div className="mt-4 flex justify-between items-center text-xs text-slate-500">
-                  <p>* Mostrando os 15 turnos mais recentes.</p>
-                  <p>* Custo Estimado baseado na média cadastrada de eficiência R$/KM.</p>
-                </div>
-              </div>
-            </div>
-
             {/* Recent Shifts */}
             <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
               <div className="flex justify-between items-center mb-6">
@@ -2313,17 +2413,23 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-left border-b border-slate-100 dark:border-slate-800">
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Data / Turno</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Plataforma</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Horário</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">KM / Rentabilidade</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ganho Total</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right">Ações</th>
+                    <tr className="text-left border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data / Turno</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Plataformas</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">KM Total</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ganhos</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Acões</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                    {groupedShifts.map((item) => (
+                    {fetchingHistory ? (
+                      <tr>
+                        <td colSpan={5} className="py-8">
+                          <TableSkeleton rows={5} cols={5} />
+                        </td>
+                      </tr>
+                    ) : (
+                      groupShiftsByDate(historyShifts).map((item) => (
                       <tr key={`${item.date}-${item.shift_type}`} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                         <td className="py-4">
                           <p className="text-sm font-bold text-slate-900 dark:text-white">{parseLocalDate(item.date).toLocaleDateString('pt-BR')}</p>
@@ -2335,11 +2441,7 @@ export default function App() {
                             <span className="text-sm font-medium text-slate-900 dark:text-white">{item.platforms.join(', ')}</span>
                           </div>
                         </td>
-                        <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.start_time} - {item.end_time}</td>
-                        <td className="py-4">
-                          <p className="text-sm text-slate-600 dark:text-slate-400">{item.totalKm} km</p>
-                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">R$ {(item.totalEarnings / item.totalKm).toFixed(2)}/km</p>
-                        </td>
+                        <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.totalKm} km</td>
                         <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">R$ {item.totalEarnings.toFixed(2)}</td>
                         <td className="py-4 text-right">
                           <button 
@@ -2389,7 +2491,7 @@ export default function App() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    )))}
                   </tbody>
                 </table>
               </div>
@@ -2397,7 +2499,7 @@ export default function App() {
           </div>
         );
       case 'history_turnos': {
-        const filteredShifts = filterDataByDate(groupedShifts, filterStartDate, filterEndDate);
+        const displayShifts = groupShiftsByDate(historyShifts);
         return (
           <div className="space-y-6 pb-24 lg:pb-8">
             <DateFilter 
@@ -2407,6 +2509,7 @@ export default function App() {
               onEndChange={setFilterEndDate}
               onClear={() => { setFilterStartDate(''); setFilterEndDate(''); }}
             />
+
             <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-bold text-slate-900 dark:text-white text-lg">Histórico de Turnos</h3>
@@ -2414,17 +2517,23 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-left border-b border-slate-100 dark:border-slate-800">
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Data / Turno</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Plataforma</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Horário</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">KM / Rentabilidade</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ganho Total</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right">Ações</th>
+                    <tr className="text-left border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data / Turno</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Plataformas</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">KM Total</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ganhos</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                    {filteredShifts.map((item) => (
+                    {fetchingHistory ? (
+                      <tr>
+                        <td colSpan={6} className="py-8">
+                          <TableSkeleton rows={5} cols={6} />
+                        </td>
+                      </tr>
+                    ) : (
+                      displayShifts.map((item: any) => (
                       <tr key={`${item.date}-${item.shift_type}`} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                         <td className="py-4">
                           <p className="text-sm font-bold text-slate-900 dark:text-white">{parseLocalDate(item.date).toLocaleDateString('pt-BR')}</p>
@@ -2436,12 +2545,12 @@ export default function App() {
                             <span className="text-sm font-medium text-slate-900 dark:text-white">{item.platforms.join(', ')}</span>
                           </div>
                         </td>
-                        <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.start_time} - {item.end_time}</td>
+                        <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.start_time} - {item.end_time || '--:--'}</td>
                         <td className="py-4">
                           <p className="text-sm text-slate-600 dark:text-slate-400">{item.totalKm} km</p>
-                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">R$ {(item.totalEarnings / item.totalKm).toFixed(2)}/km</p>
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">R$ {(item.totalKm > 0 ? item.totalEarnings / item.totalKm : 0).toFixed(2)}/km</p>
                         </td>
-                        <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">R$ {item.totalEarnings.toFixed(2)}</td>
+                        <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">R$ {(item.totalEarnings || 0).toFixed(2)}</td>
                         <td className="py-4 text-right">
                           <button 
                             onClick={() => {
@@ -2490,16 +2599,27 @@ export default function App() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    ))
+                  )}
+                    {displayShifts.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-500 italic">Nenhum registro encontrado nesta página.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+              <Pagination 
+                currentPage={shiftsPage}
+                totalCount={shiftsCount}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setShiftsPage}
+              />
             </div>
           </div>
         );
       }
       case 'history_abastecimentos': {
-        const filteredFuel = filterDataByDate(fuelLogs, filterStartDate, filterEndDate);
         return (
           <div className="space-y-6 pb-24 lg:pb-8">
             <DateFilter 
@@ -2514,59 +2634,77 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-left border-b border-slate-100 dark:border-slate-800">
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Data</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Combustível</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Odômetro</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Litros / Preço</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total</th>
-                      <th className="pb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right">Ações</th>
+                    <tr className="text-left border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Combustível</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Odômetro</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Litros / Preço</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                    {filteredFuel.map((item) => (
-                      <tr key={item.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                        <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">{parseLocalDate(item.date).toLocaleDateString('pt-BR')}</td>
-                        <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.fuel_type}</td>
-                        <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.odometer} km</td>
-                        <td className="py-4">
-                          <p className="text-sm text-slate-600 dark:text-slate-400">{item.liters} L</p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">R$ {item.price_per_liter.toFixed(2)}/L</p>
-                        </td>
-                        <td className="py-4 text-sm font-bold text-emerald-600 dark:text-emerald-400">R$ {item.total_value.toFixed(2)}</td>
-                        <td className="py-4 text-right flex justify-end gap-2">
-                          <button 
-                            onClick={() => {
-                              setEditingFuel(item);
-                              setFuelPrice(item.price_per_liter.toString());
-                              setFuelLiters(item.liters.toString());
-                              setActiveTab('abastecimentos');
-                            }}
-                            className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
-                            title="Editar registro"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteFuel(item.id)}
-                            className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
-                            title="Excluir registro"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                    {fetchingHistory ? (
+                      <tr>
+                        <td colSpan={6} className="py-8">
+                          <TableSkeleton rows={5} cols={6} />
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      historyFuel.map((item: any) => (
+                        <tr key={item.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">{parseLocalDate(item.date).toLocaleDateString('pt-BR')}</td>
+                          <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.fuel_type}</td>
+                          <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.odometer} km</td>
+                          <td className="py-4">
+                            <p className="text-sm text-slate-600 dark:text-slate-400">{item.liters} L</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">R$ {(item.price_per_liter || 0).toFixed(2)}/L</p>
+                          </td>
+                          <td className="py-4 text-sm font-bold text-emerald-600 dark:text-emerald-400">R$ {(item.total_value || 0).toFixed(2)}</td>
+                          <td className="py-4 text-right flex justify-end gap-2">
+                            <button 
+                              onClick={() => {
+                                setEditingFuel(item);
+                                setFuelPrice(item.price_per_liter.toString());
+                                setFuelLiters(item.liters.toString());
+                                setActiveTab('abastecimentos');
+                              }}
+                              className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
+                              title="Editar registro"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteFuel(item.id)}
+                              className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                              title="Excluir registro"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                    {historyFuel.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-500 italic">Nenhum registro encontrado nesta página.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+              <Pagination 
+                currentPage={fuelPage}
+                totalCount={fuelCount}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setFuelPage}
+              />
             </div>
           </div>
         );
       }
       case 'history_manutencao': {
-        const filteredMaintenance = filterDataByDate(maintenanceLogs, filterStartDate, filterEndDate);
-        const maintenanceByType = filteredMaintenance.reduce((acc: any, m) => {
+        const maintenanceByType = historyMaintenance.reduce((acc: any, m) => {
           const cat = m.category || 'Outros';
           acc[cat] = (acc[cat] || 0) + m.cost;
           return acc;
@@ -2582,85 +2720,96 @@ export default function App() {
               onEndChange={setFilterEndDate}
               onClear={() => { setFilterStartDate(''); setFilterEndDate(''); }}
             />
-            
-            {filteredMaintenance.length > 0 && (
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
-                <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Distribuição de Custos</h3>
-                <div className="h-[200px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={maintenanceChartData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#1e293b" : "#f1f5f9"} />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                        formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Custo']}
-                      />
-                      <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="#3b82f6" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            )}
 
+            {/* Maintenance Summary Chart */}
             <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
-              <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Histórico de Manutenção</h3>
-              <div className="space-y-4">
-                {filteredMaintenance.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <Wrench className="w-5 h-5 text-slate-400 dark:text-slate-500" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{item.service_type}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{item.description} • {item.odometer} km</p>
-                      </div>
-                    </div>
-                    <div className="text-right flex items-center gap-4">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">R$ {item.cost.toFixed(2)}</p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold">{parseLocalDate(item.date).toLocaleDateString('pt-BR')}</p>
-                      </div>
-                      <button 
-                        onClick={() => {
-                          setEditingMaintenance(item);
-                          if (item.service_type) {
-                            const types = item.service_type.split(', ');
-                            setSelectedServiceItems(types.map((t: string, idx: number) => ({ name: t, cost: idx === 0 ? item.cost.toString() : '' })));
-                          } else {
-                            setSelectedServiceItems([]);
-                          }
-                          setActiveTab('manutencao');
-                        }}
-                        className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
-                        title="Editar registro"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteMaintenance(item.id)}
-                        className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
-                        title="Excluir registro"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {filteredMaintenance.length === 0 && (
-                  <div className="text-center py-12">
-                    <Wrench className="w-12 h-12 text-slate-200 dark:text-slate-700 mx-auto mb-4" />
-                    <p className="text-slate-400 dark:text-slate-500 font-medium">Nenhuma manutenção encontrada no período.</p>
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Distribuição de Custos</h3>
+              <div className="h-64 w-full" style={{ minHeight: '256px' }}>
+                {isMounted && maintenanceChartData.length > 0 && (
+                  <Suspense fallback={<ChartSkeleton />}>
+                    <DistributionPieChart data={maintenanceChartData} />
+                  </Suspense>
+                )}
+                {isMounted && maintenanceChartData.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                    <Database className="w-8 h-8 mb-2 opacity-20" />
+                    <p className="text-sm italic">Nenhum dado para exibir no gráfico</p>
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Histórico de Manutenção</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Veículo / Tipo</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Descrição</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Custo</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                    {fetchingHistory ? (
+                      <tr>
+                        <td colSpan={5} className="py-8">
+                          <TableSkeleton rows={5} cols={5} />
+                        </td>
+                      </tr>
+                    ) : (
+                      historyMaintenance.map((item: any) => (
+                        <tr key={item.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">{parseLocalDate(item.date).toLocaleDateString('pt-BR')}</td>
+                          <td className="py-4">
+                            <p className="text-sm font-medium text-slate-900 dark:text-white">{item.vehicle_name}</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold">{item.category}</p>
+                          </td>
+                          <td className="py-4 text-sm text-slate-600 dark:text-slate-400">{item.description}</td>
+                          <td className="py-4 text-sm font-bold text-rose-500">R$ {(item.cost || 0).toFixed(2)}</td>
+                          <td className="py-4 text-right flex justify-end gap-2">
+                            <button 
+                              onClick={() => {
+                                setEditingMaintenance(item);
+                                setActiveTab('manutencao');
+                              }}
+                              className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
+                              title="Editar registro"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteMaintenance(item.id)}
+                              className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                              title="Excluir registro"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                    {historyMaintenance.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-500 italic">Nenhum registro encontrado nesta página.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination 
+                currentPage={maintenancePage}
+                totalCount={maintenanceCount}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setMaintenancePage}
+              />
             </div>
           </div>
         );
       }
       case 'history_despesas': {
-        const filteredExpenses = filterDataByDate(fixedExpenses, filterStartDate, filterEndDate);
         return (
           <div className="space-y-6 pb-24 lg:pb-8">
             <DateFilter 
@@ -2670,62 +2819,70 @@ export default function App() {
               onEndChange={setFilterEndDate}
               onClear={() => { setFilterStartDate(''); setFilterEndDate(''); }}
             />
-            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                <h3 className="font-bold text-slate-900 dark:text-white text-lg">Histórico de Despesas Fixas</h3>
-              </div>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Histórico de Despesas Fixas</h3>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                      <th className="px-6 py-4">Data</th>
-                      <th className="px-6 py-4">Tipo</th>
-                      <th className="px-6 py-4">Descrição</th>
-                      <th className="px-6 py-4">Valor</th>
-                      <th className="px-6 py-4 text-right">Ações</th>
+                    <tr className="text-left border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Categoria / Nome</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Valor</th>
+                      <th className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Ações</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {filteredExpenses.map((expense) => (
-                      <tr key={expense.id} className="text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <td className="px-6 py-4">{parseLocalDate(expense.date).toLocaleDateString('pt-BR')}</td>
-                        <td className="px-6 py-4">
-                          <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-medium">
-                            {expense.expense_type}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">{expense.description || '-'}</td>
-                        <td className="px-6 py-4 font-bold text-rose-600 dark:text-rose-400">R$ {expense.value.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button 
-                              onClick={() => {
-                                setEditingFixedExpense(expense);
-                                setActiveTab('despesas');
-                              }}
-                              className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteFixedExpense(expense.id)}
-                              className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                    {fetchingHistory ? (
+                      <tr>
+                        <td colSpan={4} className="py-8">
+                          <TableSkeleton rows={5} cols={4} />
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      historyExpenses.map((expense: any) => (
+                      <tr key={expense.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">{parseLocalDate(expense.date).toLocaleDateString('pt-BR')}</td>
+                        <td className="py-4">
+                          <p className="text-sm font-medium text-slate-900 dark:text-white">{expense.name}</p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold">{expense.category}</p>
+                        </td>
+                        <td className="py-4 text-sm font-bold text-rose-500">R$ {(expense.value || 0).toFixed(2)}</td>
+                        <td className="py-4 text-right flex justify-end gap-2">
+                          <button 
+                            onClick={() => {
+                              setEditingFixedExpense(expense);
+                              setActiveTab('despesas');
+                            }}
+                            className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
+                            title="Editar"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteFixedExpense(expense.id)}
+                            className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                    {historyExpenses.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-8 text-center text-slate-500 italic">Nenhum registro encontrado nesta página.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
-                {filteredExpenses.length === 0 && (
-                  <div className="text-center py-12">
-                    <Receipt className="w-12 h-12 text-slate-200 dark:text-slate-700 mx-auto mb-4" />
-                    <p className="text-slate-400 dark:text-slate-500 font-medium">Nenhuma despesa encontrada no período.</p>
-                  </div>
-                )}
               </div>
+              <Pagination 
+                currentPage={expensesPage}
+                totalCount={expensesCount}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setExpensesPage}
+              />
             </div>
           </div>
         );
@@ -3165,128 +3322,126 @@ export default function App() {
                     <FormError message={formErrors.odometer} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2 relative">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Tipos de Serviço</label>
-                    <div className="relative">
-                      <div className="flex gap-2">
-                        <button 
-                          type="button"
-                          onClick={() => setIsServiceModalOpen(!isServiceModalOpen)}
-                          className={cn(
-                            "flex-1 min-w-0 px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-left flex justify-between items-center cursor-pointer",
-                            formErrors.service_type ? "border-rose-500" : "border-slate-200 dark:border-slate-700"
-                          )}
-                        >
-                          <span className="truncate pr-2">
-                            {selectedServiceItems.length > 0 
-                              ? selectedServiceItems.map(s => s.name).join(', ') 
-                              : 'Selecione um ou mais serviços...'}
-                          </span>
-                          <ChevronRight className={cn("w-5 h-5 shrink-0 text-slate-400 transition-transform", isServiceModalOpen && "rotate-90")} />
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const name = prompt('Novo Tipo de Serviço:');
-                            if (name) handleAddServiceType(name);
-                          }}
-                          className="px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all shrink-0"
-                          title="Adicionar novo tipo"
-                        >
-                          <Plus className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {isServiceModalOpen && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-[60] overflow-hidden">
-                          <div className="p-3 border-b border-slate-100 dark:border-slate-700">
-                            <input 
-                              type="text" 
-                              placeholder="Pesquisar serviço..." 
-                              value={serviceSearch}
-                              onChange={(e) => setServiceSearch(e.target.value)}
-                              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-emerald-500 text-slate-900 dark:text-white"
-                            />
-                          </div>
-                          <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-                            {serviceTypes
-                              .filter(type => type.name.toLowerCase().includes(serviceSearch.toLowerCase()))
-                              .map(type => {
-                                const isSelected = selectedServiceItems.find(s => s.name === type.name);
-                                return (
-                                  <div key={type.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg">
-                                    <div className="flex items-center gap-3 flex-1">
-                                      <div 
-                                        className={cn(
-                                          "w-5 h-5 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-colors",
-                                          isSelected ? "bg-emerald-500 border-emerald-500" : "border-slate-300 dark:border-slate-600"
-                                        )}
-                                        onClick={() => {
-                                          if (isSelected) {
-                                            setSelectedServiceItems(prev => prev.filter(s => s.name !== type.name));
-                                          } else {
-                                            setSelectedServiceItems(prev => [...prev, { name: type.name, cost: '' }]);
-                                          }
-                                        }}
-                                      >
-                                        {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                                      </div>
-                                      <span 
-                                        className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer truncate"
-                                        onClick={() => {
-                                          if (isSelected) {
-                                            setSelectedServiceItems(prev => prev.filter(s => s.name !== type.name));
-                                          } else {
-                                            setSelectedServiceItems(prev => [...prev, { name: type.name, cost: '' }]);
-                                          }
-                                        }}
-                                      >
-                                        {type.name}
-                                      </span>
-                                    </div>
-                                    {isSelected && (
-                                      <input 
-                                        type="number" 
-                                        step="0.01"
-                                        placeholder="Valor (R$)" 
-                                        value={isSelected.cost}
-                                        onChange={(e) => {
-                                          const newCost = e.target.value;
-                                          setSelectedServiceItems(prev => prev.map(s => s.name === type.name ? { ...s, cost: newCost } : s));
-                                        }}
-                                        className="w-full sm:w-28 px-2 py-1.5 text-sm bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-500/50 rounded text-slate-900 dark:text-white outline-none focus:border-emerald-500"
-                                      />
-                                    )}
-                                  </div>
-                                );
-                            })}
-                            {serviceTypes.length === 0 && (
-                              <p className="p-3 text-center text-sm text-slate-500">Nenhum serviço disponível.</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                <div className="space-y-2 relative">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Tipos de Serviço</label>
+                  <div className="relative">
+                    <div className="flex gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => setIsServiceModalOpen(!isServiceModalOpen)}
+                        className={cn(
+                          "flex-1 min-w-0 px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-left flex justify-between items-center cursor-pointer",
+                          formErrors.service_type ? "border-rose-500" : "border-slate-200 dark:border-slate-700"
+                        )}
+                      >
+                        <span className="truncate pr-2">
+                          {selectedServiceItems.length > 0 
+                            ? selectedServiceItems.map(s => s.name).join(', ') 
+                            : 'Selecione um ou mais serviços...'}
+                        </span>
+                        <ChevronRight className={cn("w-5 h-5 shrink-0 text-slate-400 transition-transform", isServiceModalOpen && "rotate-90")} />
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const name = prompt('Novo Tipo de Serviço:');
+                          if (name) handleAddServiceType(name);
+                        }}
+                        className="px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all shrink-0"
+                        title="Adicionar novo tipo"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
                     </div>
-                    <FormError message={formErrors.service_type} />
+
+                    {isServiceModalOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-[60] overflow-hidden">
+                        <div className="p-3 border-b border-slate-100 dark:border-slate-700">
+                          <input 
+                            type="text" 
+                            placeholder="Pesquisar serviço..." 
+                            value={serviceSearch}
+                            onChange={(e) => setServiceSearch(e.target.value)}
+                            className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-emerald-500 text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                          {serviceTypes
+                            .filter(type => type.name.toLowerCase().includes(serviceSearch.toLowerCase()))
+                            .map(type => {
+                              const isSelected = selectedServiceItems.find(s => s.name === type.name);
+                              return (
+                                <div key={type.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg">
+                                  <div className="flex items-center gap-3 flex-1">
+                                    <div 
+                                      className={cn(
+                                        "w-5 h-5 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-colors",
+                                        isSelected ? "bg-emerald-500 border-emerald-500" : "border-slate-300 dark:border-slate-600"
+                                      )}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setSelectedServiceItems(prev => prev.filter(s => s.name !== type.name));
+                                        } else {
+                                          setSelectedServiceItems(prev => [...prev, { name: type.name, cost: '' }]);
+                                        }
+                                      }}
+                                    >
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                                    </div>
+                                    <span 
+                                      className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer truncate"
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setSelectedServiceItems(prev => prev.filter(s => s.name !== type.name));
+                                        } else {
+                                          setSelectedServiceItems(prev => [...prev, { name: type.name, cost: '' }]);
+                                        }
+                                      }}
+                                    >
+                                      {type.name}
+                                    </span>
+                                  </div>
+                                  {isSelected && (
+                                    <input 
+                                      type="number" 
+                                      step="0.01"
+                                      placeholder="Valor (R$)" 
+                                      value={isSelected.cost}
+                                      onChange={(e) => {
+                                        const newCost = e.target.value;
+                                        setSelectedServiceItems(prev => prev.map(s => s.name === type.name ? { ...s, cost: newCost } : s));
+                                      }}
+                                      className="w-full sm:w-28 px-2 py-1.5 text-sm bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-500/50 rounded text-slate-900 dark:text-white outline-none focus:border-emerald-500"
+                                    />
+                                  )}
+                                </div>
+                              );
+                          })}
+                          {serviceTypes.length === 0 && (
+                            <p className="p-3 text-center text-sm text-slate-500">Nenhum serviço disponível.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Categoria</label>
-                    <select 
-                      name="category" 
-                      defaultValue={editingMaintenance?.category || 'Outros'}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                    >
-                      <option value="Pneus">Pneus</option>
-                      <option value="Motor">Motor</option>
-                      <option value="Freios">Freios</option>
-                      <option value="Suspensão">Suspensão</option>
-                      <option value="Elétrica">Elétrica</option>
-                      <option value="Óleo/Filtros">Óleo/Filtros</option>
-                      <option value="Estética">Estética</option>
-                      <option value="Outros">Outros</option>
-                    </select>
-                  </div>
+                  <FormError message={formErrors.service_type} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Categoria</label>
+                  <select 
+                    name="category" 
+                    defaultValue={editingMaintenance?.category || 'Outros'}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                  >
+                    <option value="Pneus">Pneus</option>
+                    <option value="Motor">Motor</option>
+                    <option value="Freios">Freios</option>
+                    <option value="Suspensão">Suspensão</option>
+                    <option value="Elétrica">Elétrica</option>
+                    <option value="Óleo/Filtros">Óleo/Filtros</option>
+                    <option value="Estética">Estética</option>
+                    <option value="Outros">Outros</option>
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Descrição / Oficina</label>
@@ -3363,7 +3518,7 @@ export default function App() {
         const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#f43f5e', '#6366f1', '#8b5cf6', '#ec4899', '#14b8a6'];
 
         return (
-          <div className="space-y-8 pb-24 lg:pb-8">
+          <div className="space-y-8 pb-24 lg:pb-8 max-w-4xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-8 flex items-center gap-3">
@@ -3484,28 +3639,9 @@ export default function App() {
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6">Distribuição de Despesas</h3>
                 <div className="h-[300px] w-full">
                   {expenseChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={expenseChartData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={80}
-                          outerRadius={100}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {expenseChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                          formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Valor']}
-                        />
-                        <Legend verticalAlign="bottom" height={36}/>
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <Suspense fallback={<ChartSkeleton />}>
+                      <DistributionPieChart data={expenseChartData} />
+                    </Suspense>
                   ) : (
                     <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">
                       Nenhuma despesa registrada.
@@ -3812,29 +3948,16 @@ export default function App() {
               <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
                 <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Ganhos vs Gastos</h3>
                 <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={[
-                      { name: 'Ganhos', value: reportEarnings, fill: '#10b981' },
-                      { name: 'Combustível', value: reportFuel, fill: '#f43f5e' },
-                      { name: 'Manutenção', value: reportMaintenance, fill: '#f59e0b' },
-                      { name: 'Fixas', value: reportFixed, fill: '#6366f1' }
-                    ]}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#1e293b" : "#f1f5f9"} />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          borderRadius: '12px', 
-                          border: 'none', 
-                          boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                          backgroundColor: darkMode ? '#0f172a' : '#ffffff',
-                          color: darkMode ? '#f8fafc' : '#0f172a'
-                        }}
-                        formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Valor']}
-                      />
-                      <Bar dataKey="value" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {isMounted && (
+                    <Suspense fallback={<ChartSkeleton />}>
+                      <ComparisonBarChart data={[
+                        { name: 'Ganhos', value: reportEarnings, fill: '#10b981' },
+                        { name: 'Combustível', value: reportFuel, fill: '#f43f5e' },
+                        { name: 'Manutenção', value: reportMaintenance, fill: '#f59e0b' },
+                        { name: 'Fixas', value: reportFixed, fill: '#6366f1' }
+                      ]} />
+                    </Suspense>
+                  )}
                 </div>
               </div>
 
@@ -3842,34 +3965,9 @@ export default function App() {
                 <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Manutenção por Categoria</h3>
                 <div className="h-[300px] w-full">
                   {maintenanceChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={maintenanceChartData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={80}
-                          outerRadius={100}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {maintenanceChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={['#10b981', '#3b82f6', '#f59e0b', '#f43f5e', '#6366f1', '#8b5cf6'][index % 6]} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          contentStyle={{ 
-                            borderRadius: '12px', 
-                            border: 'none', 
-                            boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                            backgroundColor: darkMode ? '#0f172a' : '#ffffff',
-                            color: darkMode ? '#f8fafc' : '#0f172a'
-                          }}
-                          formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Custo']}
-                        />
-                        <Legend verticalAlign="bottom" height={36}/>
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <Suspense fallback={<ChartSkeleton />}>
+                      <DistributionPieChart data={maintenanceChartData} />
+                    </Suspense>
                   ) : (
                     <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">
                       Nenhuma manutenção registrada no período.
@@ -4036,6 +4134,16 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Sua Meta Mensal Livre (R$)</label>
+                        <input 
+                          type="number" 
+                          value={user?.monthly_goal || ''} 
+                          onChange={(e) => setUser({ ...user, monthly_goal: e.target.value ? parseFloat(e.target.value) : undefined })}
+                          placeholder="Ex: 4000"
+                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none text-sm" 
+                        />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                         <div className="flex items-center justify-between py-2">
                           <div>
                             <p className="text-sm font-medium text-slate-900 dark:text-white">Modo Escuro</p>
@@ -4154,7 +4262,39 @@ export default function App() {
                         />
                       </div>
                     </div>
-                    <div className="pt-4">
+
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="font-bold text-slate-900 dark:text-white">Cálculo de Depreciação</h3>
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-slate-500 text-white`}>
+                            <TrendingUp className="w-5 h-5" />
+                          </div>
+                        </div>
+                        {vehicleDepreciation.valorPago > 0 ? (
+                          <div className="space-y-4">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider text-xs">Valor Pago Inicial:</span>
+                              <span className="font-bold text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorPago.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider text-xs">Valor Atual Estimado:</span>
+                              <span className="font-bold text-slate-900 dark:text-white">R$ {vehicleDepreciation.valorAtualEstimado.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm pt-4 mt-2 border-t border-slate-200 dark:border-slate-700">
+                              <span className="text-sm text-slate-500 dark:text-slate-400 font-black uppercase tracking-wider">Desgaste ou Depreciação / Mês atual</span>
+                              <span className="font-black text-rose-500 text-lg">R$ {vehicleDepreciation.depreciacaoMensal.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-center py-4">
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Preencha o 'Preço de Compra' acima para que o app calcule automaticamente e mostre sua perda por depreciação ao longo do tempo.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-4 mt-6">
                       <button 
                         onClick={handleUpdateProfile}
                         disabled={loading}
@@ -4471,7 +4611,7 @@ export default function App() {
           </nav>
 
           {/* Pro Upgrade Card */}
-          <div className="mt-auto pt-6">
+          <div className="mt-auto pt-6 hidden sm:block">
             {!isSidebarCollapsed ? (
               <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 p-5 rounded-2xl text-white relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
@@ -4985,10 +5125,69 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Floating Action Button (Mobile & Desktop) */}
+        {/* Quick Add Menu */}
+        <AnimatePresence>
+          {isQuickAddOpen && (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsQuickAddOpen(false)}
+                className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.8, y: 20 }}
+                className="fixed right-6 bottom-24 z-50 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-4 border border-slate-100 dark:border-slate-800 flex flex-col gap-2 min-w-[200px]"
+              >
+                <h4 className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Acesso Rápido</h4>
+                <button 
+                  onClick={() => handleTabChange('turnos')}
+                  className="flex items-center gap-3 p-3 rounded-2xl hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-slate-700 dark:text-slate-300 transition-colors text-left"
+                >
+                  <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-500/20 rounded-lg flex items-center justify-center text-emerald-600">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-bold">Encerrar Turno</span>
+                </button>
+                <button 
+                  onClick={() => handleTabChange('abastecimentos')}
+                  className="flex items-center gap-3 p-3 rounded-2xl hover:bg-amber-50 dark:hover:bg-amber-500/10 text-slate-700 dark:text-slate-300 transition-colors text-left"
+                >
+                  <div className="w-8 h-8 bg-amber-100 dark:bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-600">
+                    <Fuel className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-bold">Abastecimento</span>
+                </button>
+                <button 
+                  onClick={() => handleTabChange('manutencao')}
+                  className="flex items-center gap-3 p-3 rounded-2xl hover:bg-blue-50 dark:hover:bg-blue-500/10 text-slate-700 dark:text-slate-300 transition-colors text-left"
+                >
+                  <div className="w-8 h-8 bg-blue-100 dark:bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-600">
+                    <Wrench className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-bold">Manutenção</span>
+                </button>
+                <button 
+                  onClick={() => handleTabChange('despesas')}
+                  className="flex items-center gap-3 p-3 rounded-2xl hover:bg-rose-50 dark:hover:bg-rose-500/10 text-slate-700 dark:text-slate-300 transition-colors text-left"
+                >
+                  <div className="w-8 h-8 bg-rose-100 dark:bg-rose-500/20 rounded-lg flex items-center justify-center text-rose-600">
+                    <Receipt className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-bold">Despesa Fixa</span>
+                </button>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Floating Action Button */}
         <button 
           onClick={() => setIsQuickAddOpen(!isQuickAddOpen)}
-          className="fixed right-6 bottom-8 z-50 w-14 h-14 bg-emerald-600 text-white rounded-full shadow-2xl shadow-emerald-300 flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+          className="fixed right-6 bottom-8 z-50 w-14 h-14 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
         >
           <Plus className={cn("w-6 h-6 transition-transform duration-300", isQuickAddOpen && "rotate-45")} />
         </button>

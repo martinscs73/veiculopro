@@ -72,7 +72,15 @@ export const api = {
   },
 
   shifts: {
-    list: () => api.request('/shifts'),
+    list: (params?: { page?: number; limit?: number; start?: string; end?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.page) searchParams.append('page', params.page.toString());
+      if (params?.limit) searchParams.append('limit', params.limit.toString());
+      if (params?.start) searchParams.append('start', params.start);
+      if (params?.end) searchParams.append('end', params.end);
+      const query = searchParams.toString();
+      return api.request(`/shifts${query ? `?${query}` : ''}`);
+    },
     create: (data: any) => api.request('/shifts', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: any) => api.request(`/shifts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: number) => api.request(`/shifts/${id}`, { method: 'DELETE' }),
@@ -80,14 +88,30 @@ export const api = {
   },
 
   fuel: {
-    list: () => api.request('/fuel'),
+    list: (params?: { page?: number; limit?: number; start?: string; end?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.page) searchParams.append('page', params.page.toString());
+      if (params?.limit) searchParams.append('limit', params.limit.toString());
+      if (params?.start) searchParams.append('start', params.start);
+      if (params?.end) searchParams.append('end', params.end);
+      const query = searchParams.toString();
+      return api.request(`/fuel${query ? `?${query}` : ''}`);
+    },
     create: (data: any) => api.request('/fuel', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: any) => api.request(`/fuel/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: number) => api.request(`/fuel/${id}`, { method: 'DELETE' }),
   },
 
   maintenance: {
-    list: () => api.request('/maintenance'),
+    list: (params?: { page?: number; limit?: number; start?: string; end?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.page) searchParams.append('page', params.page.toString());
+      if (params?.limit) searchParams.append('limit', params.limit.toString());
+      if (params?.start) searchParams.append('start', params.start);
+      if (params?.end) searchParams.append('end', params.end);
+      const query = searchParams.toString();
+      return api.request(`/maintenance${query ? `?${query}` : ''}`);
+    },
     create: (data: any) => api.request('/maintenance', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: any) => api.request(`/maintenance/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: number) => api.request(`/maintenance/${id}`, { method: 'DELETE' }),
@@ -100,7 +124,15 @@ export const api = {
   },
 
   fixedExpenses: {
-    list: () => api.request('/fixed-expenses'),
+    list: (params?: { page?: number; limit?: number; start?: string; end?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.page) searchParams.append('page', params.page.toString());
+      if (params?.limit) searchParams.append('limit', params.limit.toString());
+      if (params?.start) searchParams.append('start', params.start);
+      if (params?.end) searchParams.append('end', params.end);
+      const query = searchParams.toString();
+      return api.request(`/fixed-expenses${query ? `?${query}` : ''}`);
+    },
     create: (data: any) => api.request('/fixed-expenses', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: any) => api.request(`/fixed-expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: number) => api.request(`/fixed-expenses/${id}`, { method: 'DELETE' }),
