@@ -164,16 +164,16 @@ async function startServer() {
   console.log(`Data/Hora: ${new Date().toISOString()}`);
   const app = express();
 
-  const allowedOrigins = NODE_ENV === 'production'
-    ? [
-        process.env.FRONTEND_URL || 'https://veiculopro.app',
-        // adicione outros domínios de produção se necessário
-      ]
-    : [
-        'http://localhost:5173',  // Vite dev server padrão
-        'http://localhost:3000',
-        'http://127.0.0.1:5173',
-      ];
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.APP_URL,
+    'https://veiculopro.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+  ].filter(Boolean) as string[];
+
+  console.log('Origens permitidas:', allowedOrigins);
 
   // extreme debug logging
   app.use((req, res, next) => {
@@ -192,10 +192,10 @@ async function startServer() {
       // Manual requests (like Postman/cURL) might not have an origin header
       if (!origin) return callback(null, true);
       
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.startsWith(o))) {
         callback(null, true);
       } else {
-        console.warn(`[CORS REJECTED] Origem não permitida: ${origin}`);
+        console.error(`[CORS REJECTED] Origem não permitida: ${origin}. Origens configuradas: ${allowedOrigins.join(', ')}`);
         callback(new Error('CORS: Acesso não permitido por esta origem.'));
       }
     },

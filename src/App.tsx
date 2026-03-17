@@ -1330,17 +1330,17 @@ export default function App() {
     try {
       const { monthly_goal, ...userPayload } = user || {};
 
-      await api.auth.updateProfile({
-        ...userPayload,
-        dark_mode: darkMode ? 1 : 0,
-        notifications_enabled: notificationsEnabled ? 1 : 0
-      });
-      
       if (monthly_goal !== undefined && monthly_goal !== null) {
         localStorage.setItem('@VeiculoPro:monthly_goal', monthly_goal.toString());
       } else {
         localStorage.removeItem('@VeiculoPro:monthly_goal');
       }
+
+      await api.auth.updateProfile({
+        ...userPayload,
+        dark_mode: darkMode ? 1 : 0,
+        notifications_enabled: notificationsEnabled ? 1 : 0
+      });
 
       showToast('Configurações atualizadas com sucesso!');
     } catch (error: any) {
