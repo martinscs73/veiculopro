@@ -145,7 +145,13 @@ export const api = {
   },
 
   stats: {
-    get: () => api.request('/stats'),
+    get: (params?: { start?: string; end?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.start) searchParams.append('start', params.start);
+      if (params?.end) searchParams.append('end', params.end);
+      const query = searchParams.toString();
+      return api.request(`/stats${query ? `?${query}` : ''}`);
+    },
   },
 
   ai: {

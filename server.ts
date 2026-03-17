@@ -548,6 +548,9 @@ async function startServer() {
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
 
+      if (req.query.start) query = query.gte('date', req.query.start);
+      if (req.query.end) query = query.lte('date', req.query.end);
+
       if (req.query.page || req.query.limit) {
         query = query.range(from, to);
       }
@@ -557,6 +560,7 @@ async function startServer() {
       if (error) throw error;
       res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
+      console.error('Shifts FETCH Error:', err);
       res.status(500).json({ error: 'Falha ao buscar turnos' });
     }
   });
@@ -636,6 +640,9 @@ async function startServer() {
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
 
+      if (req.query.start) query = query.gte('date', req.query.start);
+      if (req.query.end) query = query.lte('date', req.query.end);
+
       if (req.query.page || req.query.limit) {
         query = query.range(from, to);
       }
@@ -645,6 +652,7 @@ async function startServer() {
       if (error) throw error;
       res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
+      console.error('Fuel FETCH Error:', err);
       res.status(500).json({ error: 'Falha ao buscar abastecimentos' });
     }
   });
@@ -733,9 +741,12 @@ async function startServer() {
 
       let query = supabase
         .from('maintenance_logs')
-        .select('*, service_types(*)', { count: 'exact' })
+        .select('*', { count: 'exact' })
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
+
+      if (req.query.start) query = query.gte('date', req.query.start);
+      if (req.query.end) query = query.lte('date', req.query.end);
 
       if (req.query.page || req.query.limit) {
         query = query.range(from, to);
@@ -746,6 +757,7 @@ async function startServer() {
       if (error) throw error;
       res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
+      console.error('Maintenance FETCH Error:', err);
       res.status(500).json({ error: 'Falha ao buscar manutenções' });
     }
   });
@@ -852,6 +864,9 @@ async function startServer() {
         .select('*', { count: 'exact' })
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
+
+      if (req.query.start) query = query.gte('date', req.query.start);
+      if (req.query.end) query = query.lte('date', req.query.end);
 
       if (req.query.page || req.query.limit) {
         query = query.range(from, to);
@@ -960,12 +975,31 @@ async function startServer() {
   app.get('/api/stats', authenticateToken, async (req: any, res) => {
     try {
       const userId = req.user.id;
+      const { start, end } = req.query;
       
+      let shiftsQuery = supabase.from('shifts').select('earnings, km').eq('user_id', userId);
+      let fuelQuery = supabase.from('fuel_logs').select('total_value, odometer').eq('user_id', userId);
+      let maintQuery = supabase.from('maintenance_logs').select('cost').eq('user_id', userId);
+      let fixedQuery = supabase.from('fixed_expenses').select('value').eq('user_id', userId);
+
+      if (start) {
+        shiftsQuery = shiftsQuery.gte('date', start as string);
+        fuelQuery = fuelQuery.gte('date', start as string);
+        maintQuery = maintQuery.gte('date', start as string);
+        fixedQuery = fixedQuery.gte('date', start as string);
+      }
+      if (end) {
+        shiftsQuery = shiftsQuery.lte('date', end as string);
+        fuelQuery = fuelQuery.lte('date', end as string);
+        maintQuery = maintQuery.lte('date', end as string);
+        fixedQuery = fixedQuery.lte('date', end as string);
+      }
+
       const [shiftsRes, fuelRes, maintRes, fixedRes] = await Promise.all([
-        supabase.from('shifts').select('earnings, km').eq('user_id', userId),
-        supabase.from('fuel_logs').select('total_value, odometer').eq('user_id', userId),
-        supabase.from('maintenance_logs').select('cost').eq('user_id', userId),
-        supabase.from('fixed_expenses').select('value').eq('user_id', userId)
+        shiftsQuery,
+        fuelQuery,
+        maintQuery,
+        fixedQuery
       ]);
 
       const totalEarnings = shiftsRes.data?.reduce((sum, s) => sum + (s.earnings || 0), 0) || 0;
@@ -984,6 +1018,10 @@ async function startServer() {
       const totalExpenses = totalFuel + totalMaintenance + totalFixed;
       const netProfit = totalEarnings - totalExpenses;
       const profitability = totalKm > 0 ? (totalEarnings / totalKm) : 0;
+
+      console.log(`[Stats] User: ${userId}, Filter: ${start} to ${end}`, {
+        totalEarnings, totalExpenses, netProfit
+      });
 
       res.json({
         totalEarnings,

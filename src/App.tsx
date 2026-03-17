@@ -789,14 +789,15 @@ export default function App() {
     if (!isAuthenticated) return;
     setLoading(true);
     try {
+      const filters = { start: filterStartDate, end: filterEndDate };
       const [profile, shiftsData, fuelData, maintenanceData, statsData, serviceTypesData, fixedExpensesData, fixedExpenseTypesData] = await Promise.all([
         api.auth.getProfile(),
-        api.shifts.list(),
-        api.fuel.list(),
-        api.maintenance.list(),
-        api.stats.get(),
+        api.shifts.list(filters),
+        api.fuel.list(filters),
+        api.maintenance.list(filters),
+        api.stats.get(filters),
         api.serviceTypes.list(),
-        api.fixedExpenses.list(),
+        api.fixedExpenses.list(filters),
         api.fixedExpenseTypes.list()
       ]);
       
@@ -908,6 +909,12 @@ export default function App() {
       fetchHistoryFuel(fuelPage);
     }
   }, [fuelPage, activeTab, isAuthenticated, filterStartDate, filterEndDate]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && activeTab === 'dashboard') {
+      fetchData();
+    }
+  }, [activeTab, isAuthenticated, filterStartDate, filterEndDate]);
 
   React.useEffect(() => {
     if (isAuthenticated && activeTab === 'history_manutencao') {
