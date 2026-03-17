@@ -2843,7 +2843,7 @@ export default function App() {
                       <tr key={expense.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                         <td className="py-4 text-sm font-bold text-slate-900 dark:text-white">{parseLocalDate(expense.date).toLocaleDateString('pt-BR')}</td>
                         <td className="py-4">
-                          <p className="text-sm font-medium text-slate-900 dark:text-white">{expense.name}</p>
+                          <p className="text-sm font-medium text-slate-900 dark:text-white">{expense.expense_type}</p>
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold">{expense.category}</p>
                         </td>
                         <td className="py-4 text-sm font-bold text-rose-500">R$ {(expense.value || 0).toFixed(2)}</td>

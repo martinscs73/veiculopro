@@ -849,7 +849,7 @@ async function startServer() {
 
       let query = supabase
         .from('fixed_expenses')
-        .select('*, fixed_expense_types(*)', { count: 'exact' })
+        .select('*', { count: 'exact' })
         .eq('user_id', req.user.id)
         .order('date', { ascending: false });
 
@@ -862,6 +862,7 @@ async function startServer() {
       if (error) throw error;
       res.json(req.query.page ? { data, count, page, limit } : data);
     } catch (err) {
+      console.error('Fixed Expenses FETCH Error:', err);
       res.status(500).json({ error: 'Falha ao buscar despesas fixas' });
     }
   });
@@ -920,6 +921,7 @@ async function startServer() {
       if (error) throw error;
       res.json(data);
     } catch (err) {
+      console.error('Fixed Expense Types FETCH Error:', err);
       res.status(500).json({ error: 'Falha ao buscar categorias de despesa' });
     }
   });
