@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
 import { randomUUID } from 'node:crypto';
 
@@ -51,7 +52,7 @@ async function startServer() {
 
   // === MIDDLEWARES ===
 
-  // 1. Request Logger (production: only logs API routes to reduce noise)
+  // 1. Request Logger (production only logs API routes to reduce noise)
   app.use((req, res, next) => {
     if (NODE_ENV !== 'production' || req.path.startsWith('/api')) {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Origin: ${req.get('origin') || 'none'}`);
@@ -138,7 +139,7 @@ async function startServer() {
 
   // Backup & Restore
   app.post('/api/restore', async (req: any, res) => {
-    console.log('[Restore] Payload size:', JSON.stringify(req.body).length);
+    console.log('[Restore] Rota atingida! Payload size:', JSON.stringify(req.body).length);
     const data = req.body;
     const backupEmail = data.user_profile?.email ||
       (data.user_profile?.name ? `${data.user_profile.name.toLowerCase().replace(/\s/g, '.')}@restored.com` : 'usuario.migrado@restored.com');
@@ -205,7 +206,7 @@ async function startServer() {
     }
   });
 
-  // API 404 & Error Handlers
+  // 404 & Global Error Handlers
   app.use('/api', (req, res) => {
     res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
