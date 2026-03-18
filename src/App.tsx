@@ -200,10 +200,10 @@ export default function App() {
       const origin = event.origin;
       if (!origin.endsWith('.run.app') && !origin.includes('localhost')) return;
       
-      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+      if (event.data?.type === 'AUTH_SUCCESS') {
         localStorage.setItem('token', event.data.token);
         setIsAuthenticated(true);
-        setUser(event.data.user);
+        if (event.data.user) setUser(event.data.user);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -238,7 +238,7 @@ export default function App() {
     if (period === 'hoje') {
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    } else if (dashboardPeriod === 'semana_atual') {
+    } else if (period === 'semana_atual') {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
       startDate = new Date(now.setDate(diff));
@@ -246,13 +246,13 @@ export default function App() {
       endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + 6);
       endDate.setHours(23, 59, 59, 999);
-    } else if (dashboardPeriod === 'mes_atual') {
+    } else if (period === 'mes_atual') {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    } else if (dashboardPeriod === 'mes_anterior') {
+    } else if (period === 'mes_anterior') {
       startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-    } else if (dashboardPeriod === 'ano_atual') {
+    } else if (period === 'ano_atual') {
       startDate = new Date(now.getFullYear(), 0, 1);
       endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
     }
@@ -268,16 +268,16 @@ export default function App() {
     const filteredMaintenance = (maintenanceLogs || []).filter(filterByDate);
     const filteredFixed = (fixedExpenses || []).filter(filterByDate);
 
-    const totalEarnings = filteredShifts.reduce((sum, s) => sum + (s.earnings || 0), 0);
-    const totalFuel = filteredFuel.reduce((sum, f) => sum + (f.total_value || 0), 0);
-    const totalMaintenance = filteredMaintenance.reduce((sum, m) => sum + (m.cost || 0), 0);
-    const totalFixed = filteredFixed.reduce((sum, e) => sum + (e.value || 0), 0);
+    const totalEarnings = filteredShifts.reduce((sum, s) => sum + (Number(s.earnings) || 0), 0);
+    const totalFuel = filteredFuel.reduce((sum, f) => sum + (Number(f.total_value) || 0), 0);
+    const totalMaintenance = filteredMaintenance.reduce((sum, m) => sum + (Number(m.cost) || 0), 0);
+    const totalFixed = filteredFixed.reduce((sum, e) => sum + (Number(e.value) || 0), 0);
     const totalExpenses = totalFuel + totalMaintenance + totalFixed;
     
     // Odometer logic
-    let totalKm = filteredShifts.reduce((sum, s) => sum + (s.km || 0), 0);
+    let totalKm = filteredShifts.reduce((sum, s) => sum + (Number(s.km) || 0), 0);
     if (filteredFuel.length > 1) {
-      const odos = filteredFuel.map(f => f.odometer).filter(o => o > 0);
+      const odos = filteredFuel.map(f => Number(f.odometer) || 0).filter(o => o > 0);
       if (odos.length > 1) {
         const minOdo = Math.min(...odos);
         const maxOdo = Math.max(...odos);

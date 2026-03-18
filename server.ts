@@ -163,6 +163,7 @@ async function startServer() {
   console.log(`Ambiente: ${NODE_ENV}`);
   console.log(`Data/Hora: ${new Date().toISOString()}`);
   const app = express();
+  app.set('trust proxy', 1);
 
   const allowedOrigins = [
     process.env.FRONTEND_URL,
@@ -187,15 +188,44 @@ async function startServer() {
     next();
   });
 
+  app.use(express.json({ limit: '50mb' }));
+
+  // --- Static Assets (Serve BEFORE CORS and Auth for same-origin requests) ---
+  if (NODE_ENV === 'production') {
+    app.use('/assets', express.static(path.join(__dirname, 'dist', 'assets')));
+    app.use(express.static(path.join(__dirname, 'dist')));
+  }
+
   app.use(cors({
     origin: (origin, callback) => {
       // Manual requests (like Postman/cURL) might not have an origin header
       if (!origin) return callback(null, true);
       
-      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.startsWith(o))) {
+      const normalizedOrigin = origin.toLowerCase().trim();
+      
+      // Check if it's one of the explicitly allowed origins
+      const isExplicitlyAllowed = 
+        allowedOrigins.length === 0 || 
+        allowedOrigins.some(o => normalizedOrigin === o.toLowerCase() || normalizedOrigin.startsWith(o.toLowerCase()));
+      
+      // Check for dynamic subdomains
+      const isDynamicAllowed = 
+        normalizedOrigin.endsWith('.onrender.com') ||
+        normalizedOrigin.endsWith('.vercel.app');
+
+      // More robust check — sometimes there is no protocol in startswith but is in origin
+      const isPrototolRelativeMatch = allowedOrigins.some(o => {
+        const oUrl = o.replace(/^https?:\/\//, '');
+        const nUrl = normalizedOrigin.replace(/^https?:\/\//, '');
+        return nUrl === oUrl || nUrl.startsWith(oUrl);
+      });
+
+      if (isExplicitlyAllowed || isDynamicAllowed || isPrototolRelativeMatch) {
         callback(null, true);
       } else {
-        console.error(`[CORS REJECTED] Origem não permitida: ${origin}. Origens configuradas: ${allowedOrigins.join(', ')}`);
+        console.warn(`[CORS REJECTED] Current Origin: "${origin}"`);
+        console.warn(`[CORS REJECTED] Normalized: "${normalizedOrigin}"`);
+        console.warn(`[CORS REJECTED] Allowed: ${JSON.stringify(allowedOrigins)}`);
         callback(new Error('CORS: Acesso não permitido por esta origem.'));
       }
     },
@@ -204,7 +234,6 @@ async function startServer() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     exposedHeaders: ['Authorization']
   }));
-  app.use(express.json({ limit: '50mb' }));
 
   // Auth Middleware
   const authenticateToken = async (req: any, res: any, next: any) => {
@@ -393,7 +422,6 @@ async function startServer() {
     }
   });
 
-  app.set('trust proxy', 1);
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -457,17 +485,9 @@ async function startServer() {
     }
   });
 
-  app.post('/api/auth/change-password', authenticateToken, async (req: any, res) => {
+  app.post('/api/auth/change-password', authenticateToken, validateBody(ChangePasswordSchema), async (req: any, res) => {
     const { currentPassword, newPassword } = req.body;
     try {
-      if (!currentPassword || !newPassword) {
-        return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias.' });
-      }
-
-      if (newPassword.length < 8) {
-        return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres.' });
-      }
-
       // Fetch current user's hashed password
       const { data: user, error } = await supabase
         .from('users')
@@ -700,36 +720,6 @@ async function startServer() {
     }
   });
 
-  app.put('/api/auth/change-password', authenticateToken, validateBody(ChangePasswordSchema), async (req: any, res) => {
-    const { currentPassword, newPassword } = req.body;
-    try {
-      const { data: user, error: fetchError } = await supabase
-        .from('users')
-        .select('password')
-        .eq('id', req.user.id)
-        .single();
-
-      if (fetchError || !user || !user.password) {
-        return res.status(401).json({ error: 'Usuário não encontrado' });
-      }
-
-      const isValid = await bcrypt.compare(currentPassword, user.password);
-      if (!isValid) {
-        return res.status(401).json({ error: 'Senha atual incorreta' });
-      }
-
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ password: hashedPassword })
-        .eq('id', req.user.id);
-      
-      if (updateError) throw updateError;
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Erro ao alterar senha' });
-    }
-  });
 
   // --- Maintenance Routes ---
   app.get('/api/maintenance', authenticateToken, async (req: any, res) => {
@@ -1428,8 +1418,6 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
