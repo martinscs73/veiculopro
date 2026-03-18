@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useMemo } from 'react';
+import { useApp } from './context/AppContext';
 import { 
   LayoutDashboard, 
   Fuel, 
@@ -166,877 +167,52 @@ const filterDataByDate = (data: any[], startDate: string, endDate: string) => {
 };
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
-  const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState(() => {
-    const hash = window.location.hash.replace('#', '');
-    const validTabs = ['dashboard', 'history_turnos', 'history_abastecimentos', 'history_manutencao', 'history_despesas', 'configuracoes'];
-    return validTabs.includes(hash) ? hash : 'dashboard';
-  });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-  
-  // Pagination states
-  const [shiftsPage, setShiftsPage] = useState(1);
-  const [shiftsCount, setShiftsCount] = useState(0);
-  const [historyShifts, setHistoryShifts] = useState<any[]>([]);
-  const [fuelPage, setFuelPage] = useState(1);
-  const [fuelCount, setFuelCount] = useState(0);
-  const [historyFuel, setHistoryFuel] = useState<any[]>([]);
-  const [maintenancePage, setMaintenancePage] = useState(1);
-  const [maintenanceCount, setMaintenanceCount] = useState(0);
-  const [historyMaintenance, setHistoryMaintenance] = useState<any[]>([]);
-  const [expensesPage, setExpensesPage] = useState(1);
-  const [expensesCount, setExpensesCount] = useState(0);
-  const [historyExpenses, setHistoryExpenses] = useState<any[]>([]);
-  const [fetchingHistory, setFetchingHistory] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const ITEMS_PER_PAGE = 10;
-  const isPro = user?.subscription_plan === 'pro';
-
-  React.useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) return;
-      
-      if (event.data?.type === 'AUTH_SUCCESS') {
-        localStorage.setItem('token', event.data.token);
-        setIsAuthenticated(true);
-        if (event.data.user) setUser(event.data.user);
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  // Data state
-  const [shifts, setShifts] = useState<any[]>([]);
-  const [fuelLogs, setFuelLogs] = useState<any[]>([]);
-  const [maintenanceLogs, setMaintenanceLogs] = useState<any[]>([]);
-  const [serviceTypes, setServiceTypes] = useState<any[]>([]);
-  const [fixedExpenses, setFixedExpenses] = useState<any[]>([]);
-  const [fixedExpenseTypes, setFixedExpenseTypes] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
-  const [dashboardPeriod, setDashboardPeriod] = useState('mes_atual');
-  
-  // Independent periods for cards
-  const [periodGanhos, setPeriodGanhos] = useState('mes_atual');
-  const [periodLucro, setPeriodLucro] = useState('mes_atual');
-  const [periodTotalKm, setPeriodTotalKm] = useState('mes_atual');
-  const [periodRentabilidade, setPeriodRentabilidade] = useState('mes_atual');
-  const [periodRHoraLivre, setPeriodRHoraLivre] = useState('mes_atual');
-  const [periodVelMedia, setPeriodVelMedia] = useState('mes_atual');
-  const [periodMediaLivre, setPeriodMediaLivre] = useState('mes_atual');
-  const [periodCustoComb, setPeriodCustoComb] = useState('mes_atual');
-
-  const calculateStatsForPeriod = (period: string) => {
-    const now = new Date();
-    let startDate = new Date(0);
-    let endDate = new Date('2099-12-31');
-
-    if (period === 'hoje') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    } else if (period === 'semana_atual') {
-      const day = now.getDay();
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-      startDate = new Date(now.setDate(diff));
-      startDate.setHours(0, 0, 0, 0);
-      endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 6);
-      endDate.setHours(23, 59, 59, 999);
-    } else if (period === 'mes_atual') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    } else if (period === 'mes_anterior') {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-    } else if (period === 'ano_atual') {
-      startDate = new Date(now.getFullYear(), 0, 1);
-      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
-    }
-
-    const filterByDate = (item: any) => {
-      if (!item) return false;
-      const itemDate = parseLocalDate(item.date);
-      return itemDate >= startDate && itemDate <= endDate;
-    };
-
-    const filteredShifts = (shifts || []).filter(filterByDate);
-    const filteredFuel = (fuelLogs || []).filter(filterByDate);
-    const filteredMaintenance = (maintenanceLogs || []).filter(filterByDate);
-    const filteredFixed = (fixedExpenses || []).filter(filterByDate);
-
-    const totalEarnings = filteredShifts.reduce((sum, s) => sum + (Number(s.earnings) || 0), 0);
-    const totalFuel = filteredFuel.reduce((sum, f) => sum + (Number(f.total_value) || 0), 0);
-    const totalMaintenance = filteredMaintenance.reduce((sum, m) => sum + (Number(m.cost) || 0), 0);
-    const totalFixed = filteredFixed.reduce((sum, e) => sum + (Number(e.value) || 0), 0);
-    const totalExpenses = totalFuel + totalMaintenance + totalFixed;
-    
-    // Odometer logic
-    let totalKm = filteredShifts.reduce((sum, s) => sum + (Number(s.km) || 0), 0);
-    if (filteredFuel.length > 1) {
-      const odos = filteredFuel.map(f => Number(f.odometer) || 0).filter(o => o > 0);
-      if (odos.length > 1) {
-        const minOdo = Math.min(...odos);
-        const maxOdo = Math.max(...odos);
-        totalKm = maxOdo - minOdo;
-      }
-    }
-
-    // Calculate Hours and additional metrics
-    let totalHours = 0;
-    const uniqueDays = new Set<string>();
-
-    filteredShifts.forEach(shift => {
-      if (shift && shift.date) uniqueDays.add(shift.date);
-      if (shift.start_time && shift.end_time) {
-        const [startH, startM] = shift.start_time.split(':').map(Number);
-        const [endH, endM] = shift.end_time.split(':').map(Number);
-        if (!isNaN(startH) && !isNaN(endH)) {
-          let diffHours = (endH + endM/60) - (startH + startM/60);
-          if (diffHours < 0) diffHours += 24; // Crossed midnight
-          totalHours += diffHours;
-        }
-      }
-    });
-
-    const netProfit = totalEarnings - totalExpenses;
-    const profitability = totalKm > 0 ? (totalEarnings / totalKm) : 0;
-    const netProfitPerHour = totalHours > 0 ? (netProfit / totalHours) : 0;
-    const avgVelocity = totalHours > 0 ? (totalKm / totalHours) : 0;
-    const workingDays = uniqueDays.size;
-    const avgProfitPerDay = workingDays > 0 ? (netProfit / workingDays) : 0;
-
-    return {
-      totalEarnings,
-      totalKm,
-      totalExpenses,
-      netProfit,
-      profitability,
-      totalFuel,
-      totalMaintenance,
-      totalFixed,
-      totalHours,
-      netProfitPerHour,
-      avgVelocity,
-      workingDays,
-      avgProfitPerDay
-    };
-  };
-
-  const dashboardStats = useMemo(() => calculateStatsForPeriod(dashboardPeriod), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, dashboardPeriod]);
-  
-  // Independent Stats calculations
-  const statsGanhos = useMemo(() => calculateStatsForPeriod(periodGanhos), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodGanhos]);
-  const statsLucro = useMemo(() => calculateStatsForPeriod(periodLucro), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodLucro]);
-  const statsTotalKm = useMemo(() => calculateStatsForPeriod(periodTotalKm), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodTotalKm]);
-  const statsRentabilidade = useMemo(() => calculateStatsForPeriod(periodRentabilidade), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodRentabilidade]);
-  const statsRHoraLivre = useMemo(() => calculateStatsForPeriod(periodRHoraLivre), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodRHoraLivre]);
-  const statsVelMedia = useMemo(() => calculateStatsForPeriod(periodVelMedia), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodVelMedia]);
-  const statsMediaLivre = useMemo(() => calculateStatsForPeriod(periodMediaLivre), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodMediaLivre]);
-  const statsCustoComb = useMemo(() => calculateStatsForPeriod(periodCustoComb), [shifts, fuelLogs, maintenanceLogs, fixedExpenses, periodCustoComb]);
-
-  // Gross Earnings of the latest active day
-  const latestDayEarnings = useMemo(() => {
-    if (!shifts || shifts.length === 0) return { dateStr: '--/--', total: 0 };
-    
-    const shiftDates = shifts.map(s => s.date).filter(Boolean);
-    if (shiftDates.length === 0) return { dateStr: '--/--', total: 0 };
-    
-    // Sort descending to find the latest string date (YYYY-MM-DD)
-    const sortedDates = [...new Set(shiftDates)].sort((a, b) => (b as string).localeCompare(a as string));
-    const latestDate = sortedDates[0];
-    
-    const total = shifts
-      .filter(s => s.date === latestDate)
-      .reduce((sum, s) => sum + (s.earnings || 0), 0);
-      
-    try {
-      const dateObj = parseLocalDate(latestDate as string);
-      const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      return { dateStr, total };
-    } catch {
-      return { dateStr: String(latestDate), total };
-    }
-  }, [shifts]);
-
-  // Modals
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const [aiAnalysisResult, setAiAnalysisResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [editingShift, setEditingShift] = useState<any>(null);
-  const [editingMaintenance, setEditingMaintenance] = useState<any>(null);
-  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
-  const [selectedServiceItems, setSelectedServiceItems] = useState<{name: string, cost: string}[]>([]);
-  const [serviceSearch, setServiceSearch] = useState('');
-  const [editingFixedExpense, setEditingFixedExpense] = useState<any>(null);
-  const [editingFuel, setEditingFuel] = useState<any>(null);
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    variant?: 'danger' | 'warning' | 'info';
-    onConfirm: () => void;
-    onCancel?: () => void;
-    isLoading?: boolean;
-  } | null>(null);
-
-  const confirmAction = (options: {
-    title: string;
-    message: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    variant?: 'danger' | 'warning' | 'info';
-    onConfirm: () => Promise<void> | void;
-  }) => {
-    setConfirmModal({
-      isOpen: true,
-      ...options,
-      onConfirm: async () => {
-        setConfirmModal(prev => prev ? { ...prev, isLoading: true } : null);
-        try {
-          await options.onConfirm();
-        } catch (error) {
-          console.error('Action failed:', error);
-          const errorMessage = (error as any).details 
-            ? `${error.message}: ${(error as any).details}${ (error as any).how_to_fix || ''}`
-            : (error.message || 'Erro ao realizar operação');
-          showToast(errorMessage, 'error');
-        } finally {
-          setConfirmModal(null);
-        }
-      }
-    });
-  };
-
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
-  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
-
-  const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
-  // Smart Insight Logic
-  const smartInsight = useMemo(() => {
-    if (!shifts || shifts.length === 0) return null;
-    
-    // Filter last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentShifts = shifts.filter(s => s && s.date && parseLocalDate(s.date) >= thirtyDaysAgo);
-    
-    if (recentShifts.length === 0) return null;
-
-    const platformStats: { [key: string]: { earnings: number, km: number } } = {};
-    
-    // Group shifts by date and shift_type to distribute KM proportionally
-    const shiftsGrouped: Record<string, any[]> = {};
-    recentShifts.forEach(s => {
-      const key = `${s.date}_${s.shift_type}`;
-      if (!shiftsGrouped[key]) shiftsGrouped[key] = [];
-      shiftsGrouped[key].push(s);
-    });
-
-    Object.values(shiftsGrouped).forEach(group => {
-      const totalEarnings = group.reduce((sum, s) => sum + s.earnings, 0);
-      const totalKm = group.reduce((sum, s) => sum + s.km, 0);
-      
-      group.forEach(s => {
-        if (!platformStats[s.platform]) platformStats[s.platform] = { earnings: 0, km: 0 };
-        platformStats[s.platform].earnings += s.earnings;
-        
-        // Distribute KM proportionally based on earnings
-        const proportionalKm = totalEarnings > 0 ? (s.earnings / totalEarnings) * totalKm : 0;
-        platformStats[s.platform].km += proportionalKm;
-      });
-    });
-
-    let bestPlatform = '';
-    let bestRate = 0;
-    let worstPlatform = '';
-    let worstRate = Infinity;
-
-    Object.entries(platformStats).forEach(([platform, stats]) => {
-      if (stats.km > 0) {
-        const rate = stats.earnings / stats.km;
-        if (rate > bestRate) {
-          bestRate = rate;
-          bestPlatform = platform;
-        }
-        if (rate < worstRate) {
-          worstRate = rate;
-          worstPlatform = platform;
-        }
-      }
-    });
-
-    if (bestPlatform && worstPlatform && bestPlatform !== worstPlatform) {
-      return {
-        message: `A ${bestPlatform} está pagando R$ ${bestRate.toFixed(2)}/km vs R$ ${worstRate.toFixed(2)}/km na ${worstPlatform} nos últimos 30 dias. Priorize a ${bestPlatform}!`,
-        type: 'success'
-      };
-    }
-    
-    return null;
-  }, [shifts]);
-
-
-  // Auth form state
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authForm, setAuthForm] = useState({ email: '', password: '', name: '' });
-
-  // UI State
-  const [isHealthCollapsed, setIsHealthCollapsed] = useState(false);
-  const [showInsight, setShowInsight] = useState(true);
-  
-  // Fuel calculation state
-  const [fuelPrice, setFuelPrice] = useState<string>('');
-  const [fuelLiters, setFuelLiters] = useState<string>('');
-
-  const fuelTotal = useMemo(() => {
-    const price = parseFloat(fuelPrice);
-    const liters = parseFloat(fuelLiters);
-    if (isNaN(price) || isNaN(liters)) return '0.00';
-    return (price * liters).toFixed(2);
-  }, [fuelPrice, fuelLiters]);
-
-  const [isBottomNavVisible, setIsBottomNavVisible] = useState(true);
-  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-
-  const [reportPeriod, setReportPeriod] = useState('month');
-  const [reportPlatform, setReportPlatform] = useState('all');
-  const [reportVehicle, setReportVehicle] = useState('all');
-  const [reportDriver, setReportDriver] = useState('all');
-  const [reportCategory, setReportCategory] = useState('all');
-  const [reportFuelType, setReportFuelType] = useState('all');
-  const [reportVehicleType, setReportVehicleType] = useState('all');
-
-  // Date filters for history
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-
-  // Settings state
-  const [settingsTab, setSettingsTab] = useState('profile');
-  const [darkMode, setDarkMode] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
-
-  const [totalKm, setTotalKm] = useState('');
-  const [shiftPlatforms, setShiftPlatforms] = useState([
-    { name: 'Uber', earnings: '', tips: '', rides_count: '' },
-    { name: '99Pop', earnings: '', tips: '', rides_count: '' },
-    { name: 'InDriver', earnings: '', tips: '', rides_count: '' },
-    { name: 'Particular', earnings: '', tips: '', rides_count: '' },
-  ]);
-
-  const groupedShifts = useMemo(() => {
-    const groups: { [key: string]: any } = {};
-    
-    (shifts || []).forEach(shift => {
-      if (!shift || !shift.date) return;
-      const key = `${shift.date}-${shift.shift_type}`;
-      if (!groups[key]) {
-        groups[key] = {
-          ...shift,
-          platforms: [shift.platform].filter(Boolean),
-          totalEarnings: shift.earnings || 0,
-          totalKm: shift.km || 0
-        };
-      } else {
-        if (shift.platform) groups[key].platforms.push(shift.platform);
-        groups[key].totalEarnings += shift.earnings || 0;
-        groups[key].totalKm += shift.km || 0;
-      }
-    });
-
-    return Object.values(groups).sort((a, b) => parseLocalDate(b.date).getTime() - parseLocalDate(a.date).getTime());
-  }, [shifts]);
-
-  const monthlyChartData = useMemo(() => {
-    const last6Months = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      last6Months.push({
-        month: d.toLocaleString('pt-BR', { month: 'short' }),
-        monthKey: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-        earnings: 0,
-        expenses: 0,
-        fuel: 0,
-        maintenance: 0
-      });
-    }
-
-    (shifts || []).forEach(s => {
-      if (!s || !s.date) return;
-      const key = s.date.substring(0, 7);
-      const monthData = last6Months.find(m => m.monthKey === key);
-      if (monthData) {
-        monthData.earnings += s.earnings || 0;
-      }
-    });
-
-    (fuelLogs || []).forEach(f => {
-      if (!f || !f.date) return;
-      const key = f.date.substring(0, 7);
-      const monthData = last6Months.find(m => m.monthKey === key);
-      if (monthData) {
-        monthData.fuel += f.total_value || 0;
-        monthData.expenses += f.total_value || 0;
-      }
-    });
-
-    (maintenanceLogs || []).forEach(m => {
-      if (!m || !m.date) return;
-      const key = m.date.substring(0, 7);
-      const monthData = last6Months.find(m => m.monthKey === key);
-      if (monthData) {
-        monthData.maintenance += m.cost || 0;
-        monthData.expenses += m.cost || 0;
-      }
-    });
-
-    return last6Months;
-  }, [shifts, fuelLogs, maintenanceLogs]);
-
-  const platformData = useMemo(() => {
-    const totals: { [key: string]: number } = {};
-    
-    (shifts || []).forEach(s => {
-      if (s && s.platform) {
-        totals[s.platform] = (totals[s.platform] || 0) + (s.earnings || 0);
-      }
-    });
-
-    const colors = ['#000000', '#FFD100', '#10b981', '#64748b', '#8b5cf6', '#f59e0b', '#ef4444'];
-
-    return Object.entries(totals)
-      .map(([name, value], index) => ({
-        name,
-        value,
-        color: colors[index % colors.length]
-      }))
-      .filter(p => p.value > 0)
-      .sort((a, b) => b.value - a.value);
-  }, [shifts]);
-
-  const maintenanceAlerts = useMemo(() => {
-    if (!user || !maintenanceLogs) return [];
-    const alerts: { type: 'warning' | 'info' | 'error' | 'success', title: string, titleClean: string, serviceKey: string, message: string, icon: any, progress: number }[] = [];
-    const currentOdometer = Number(user.vehicle_odometer) || 0;
-    const initialOdometer = Number(user.initial_odometer) || currentOdometer;
-
-    const checkService = (keywords: string[], interval: number, title: string, icon: any, serviceKey: string) => {
-      const logs = (maintenanceLogs || []).filter(m =>
-        m && m.service_type && keywords.some(k => m.service_type.toLowerCase().includes(k.toLowerCase()))
-      );
-
-      const lastServiceKm = logs.length > 0 ? Math.max(...logs.map(m => Number(m.odometer) || 0)) : initialOdometer;
-
-      const nextServiceKm = lastServiceKm + interval;
-      const kmDrivenSinceLast = currentOdometer - lastServiceKm;
-      const kmRemaining = nextServiceKm - currentOdometer;
-      const progress = Math.min(100, Math.max(0, (kmDrivenSinceLast / interval) * 100));
-
-      if (kmRemaining <= 0) {
-        alerts.push({
-          type: 'error',
-          title: `VENCIDO: ${title}`,
-          titleClean: title,
-          serviceKey,
-          message: `Passou ${Math.abs(kmRemaining).toLocaleString()}km do prazo. Agende agora!`,
-          icon,
-          progress: 100
-        });
-      } else if (kmRemaining <= interval * 0.1) {
-        alerts.push({
-          type: 'warning',
-          title: `Próximo: ${title}`,
-          titleClean: title,
-          serviceKey,
-          message: `Faltam ${kmRemaining.toLocaleString()}km.`,
-          icon,
-          progress
-        });
-      } else {
-        alerts.push({
-          type: 'info',
-          title: title,
-          titleClean: title,
-          serviceKey,
-          message: `Em dia. Próxima em ${kmRemaining.toLocaleString()}km.`,
-          icon,
-          progress
-        });
-      }
-    };
-
-    // Intervalos padrão por tipo de veículo
-    const isGNV = (user.fuel_type || '').toLowerCase().includes('gnv');
-    const isDiesel = (user.fuel_type || '').toLowerCase().includes('diesel');
-    const oilInterval = isDiesel ? 7500 : isGNV ? 8000 : 10000;
-
-    checkService(['óleo', 'oleo'], oilInterval, 'Troca de Óleo', Fuel, 'Troca de Óleo');
-    checkService(['pneu', 'rodízio', 'rodizio'], 10000, 'Rodízio de Pneus', Wrench, 'Rodízio de Pneus');
-    checkService(['filtro de ar', 'filtro ar'], 15000, 'Filtro de Ar', Wind, 'Filtro de Ar');
-    checkService(['freio', 'pastilha'], 30000, 'Pastilhas de Freio', ShieldAlert, 'Pastilhas de Freio');
-    checkService(['vela'], 40000, 'Velas de Ignição', Zap, 'Velas de Ignição');
-    checkService(['correia', 'dentada'], 60000, 'Correia Dentada', Settings, 'Correia Dentada');
-
-    return alerts;
-  }, [user, maintenanceLogs]);
-
-  const fuelEfficiencyData = useMemo(() => {
-    const vehiclesData: { [key: string]: any[] } = {};
-    
-    // Group fuel logs by vehicle
-    fuelLogs.forEach(f => {
-      const v = f.vehicle_name || 'Desconhecido';
-      if (!vehiclesData[v]) vehiclesData[v] = [];
-      vehiclesData[v].push(f);
-    });
-
-    const results = Object.entries(vehiclesData).map(([vehicle, logs]) => {
-      // Sort logs by odometer ascending
-      const sortedLogs = [...logs].sort((a, b) => (a.odometer || 0) - (b.odometer || 0));
-      
-      let totalKm = 0;
-      let totalLiters = 0;
-      let efficiencies: number[] = [];
-      
-      let lastFullOdo = -1;
-      let litersSinceLastFull = 0;
-
-      for (let i = 0; i < sortedLogs.length; i++) {
-        const log = sortedLogs[i];
-        
-        if (log.is_full_tank) {
-          if (lastFullOdo !== -1 && log.odometer > lastFullOdo) {
-            const kmDriven = log.odometer - lastFullOdo;
-            const currentLiters = litersSinceLastFull + log.liters;
-            
-            const efficiency = kmDriven / currentLiters;
-            efficiencies.push(efficiency);
-            
-            totalKm += kmDriven;
-            totalLiters += currentLiters;
-          }
-          // Reset for next full tank cycle
-          lastFullOdo = log.odometer;
-          litersSinceLastFull = 0;
-        } else {
-          // Accumulate liters from partial fill-ups
-          litersSinceLastFull += log.liters;
-        }
-      }
-
-      const avg = totalLiters > 0 ? totalKm / totalLiters : 0;
-      const best = efficiencies.length > 0 ? Math.max(...efficiencies) : 0;
-
-      return {
-        vehicle,
-        avg: avg.toFixed(2),
-        best: best.toFixed(2)
-      };
-    }).filter(d => parseFloat(d.avg) > 0);
-
-    return results;
-  }, [fuelLogs]);
-
-  const vehicleDepreciation = useMemo(() => {
-    const profile = user || {};
-    const valorPago = profile.purchase_price || 0;
-
-    if (!valorPago) {
-      return { valorPago: 0, valorAtualEstimado: 0, depreciacaoMensal: 0, mesesDePosse: 0 };
-    }
-
-    // Calcula tempo de posse a partir da data de compra (não do ano de fabricação)
-    let mesesDePosse = 0;
-    if (profile.purchase_date) {
-      const [y, m, d] = profile.purchase_date.split('-').map(Number);
-      const dataCompra = new Date(y, m - 1, d);
-      const hoje = new Date();
-      mesesDePosse = (hoje.getFullYear() - dataCompra.getFullYear()) * 12
-        + (hoje.getMonth() - dataCompra.getMonth());
-      if (mesesDePosse < 0) mesesDePosse = 0;
-    }
-
-    const anosDePosse = mesesDePosse / 12;
-
-    // Taxa de 15% a.a. composta aplicada sobre o VALOR PAGO desde a data de compra
-    const valorAtualEstimado = valorPago * Math.pow(0.85, anosDePosse);
-    // Depreciação mensal = 15% ao ano sobre o valor atual (não sobre o preço original)
-    const depreciacaoMensal = (valorAtualEstimado * 0.15) / 12;
-
-    return {
-      valorPago,
-      valorAtualEstimado,
-      depreciacaoMensal,
-      mesesDePosse
-    };
-  }, [user]);
-
-  // Fetch data
-  const fetchData = async () => {
-    if (!isAuthenticated) return;
-    setLoading(true);
-    try {
-      const filters = { start: filterStartDate, end: filterEndDate };
-      const [profile, shiftsData, fuelData, maintenanceData, statsData, serviceTypesData, fixedExpensesData, fixedExpenseTypesData] = await Promise.all([
-        api.auth.getProfile(),
-        api.shifts.list(filters),
-        api.fuel.list(filters),
-        api.maintenance.list(filters),
-        api.stats.get(filters),
-        api.serviceTypes.list(),
-        api.fixedExpenses.list(filters),
-        api.fixedExpenseTypes.list()
-      ]);
-      
-      const storedGoal = localStorage.getItem('@VeiculoPro:monthly_goal');
-      if (storedGoal) {
-        profile.monthly_goal = parseFloat(storedGoal);
-      }
-      
-      setUser(profile);
-      setShifts(shiftsData.data || (Array.isArray(shiftsData) ? shiftsData : []));
-      setShiftsCount(shiftsData.count !== undefined ? shiftsData.count : (Array.isArray(shiftsData) ? shiftsData.length : 0));
-      
-      setFuelLogs(fuelData.data || (Array.isArray(fuelData) ? fuelData : []));
-      setFuelCount(fuelData.count !== undefined ? fuelData.count : (Array.isArray(fuelData) ? fuelData.length : 0));
-      
-      setMaintenanceLogs(maintenanceData.data || (Array.isArray(maintenanceData) ? maintenanceData : []));
-      setMaintenanceCount(maintenanceData.count !== undefined ? maintenanceData.count : (Array.isArray(maintenanceData) ? maintenanceData.length : 0));
-      
-      setFixedExpenses(fixedExpensesData.data || (Array.isArray(fixedExpensesData) ? fixedExpensesData : []));
-      setExpensesCount(fixedExpensesData.count !== undefined ? fixedExpensesData.count : (Array.isArray(fixedExpensesData) ? fixedExpensesData.length : 0));
-
-      setServiceTypes(serviceTypesData);
-      setFixedExpenseTypes(fixedExpenseTypesData);
-      setStats(statsData);
-      setDarkMode(!!profile.dark_mode);
-      setNotificationsEnabled(!!profile.notifications_enabled);
-    } catch (error: any) {
-      console.error('Failed to fetch data:', error);
-      
-      const isAuthError = 
-        error.message?.includes('401') || 
-        error.message?.includes('403') || 
-        error.message?.toLowerCase().includes('unauthorized') || 
-        error.message?.toLowerCase().includes('forbidden') ||
-        error.message?.toLowerCase().includes('token') ||
-        error.message?.toLowerCase().includes('user not found');
-
-      if (isAuthError) {
-        showToast('Sessão expirada. Por favor, faça login novamente.', 'warning');
-        handleLogout();
-      } else {
-        showToast('Erro de conexão: ' + error.message, 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchHistoryShifts = async (p: number) => {
-    setFetchingHistory(true);
-    try {
-      const { data, count } = await api.shifts.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
-      setHistoryShifts(data || []);
-      setShiftsCount(typeof count === 'number' ? count : 0);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setFetchingHistory(false);
-    }
-  };
-
-  const fetchHistoryFuel = async (p: number) => {
-    setFetchingHistory(true);
-    try {
-      const { data, count } = await api.fuel.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
-      setHistoryFuel(data || []);
-      setFuelCount(typeof count === 'number' ? count : 0);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setFetchingHistory(false);
-    }
-  };
-
-  const fetchHistoryMaintenance = async (p: number) => {
-    setFetchingHistory(true);
-    try {
-      const { data, count } = await api.maintenance.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
-      setHistoryMaintenance(data || []);
-      setMaintenanceCount(typeof count === 'number' ? count : 0);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setFetchingHistory(false);
-    }
-  };
-
-  const fetchHistoryExpenses = async (p: number) => {
-    setFetchingHistory(true);
-    try {
-      const { data, count } = await api.fixedExpenses.list({ page: p, limit: ITEMS_PER_PAGE, start: filterStartDate, end: filterEndDate });
-      setHistoryExpenses(data || []);
-      setExpensesCount(typeof count === 'number' ? count : 0);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setFetchingHistory(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (isAuthenticated && activeTab === 'history_turnos') {
-      fetchHistoryShifts(shiftsPage);
-    }
-  }, [shiftsPage, activeTab, isAuthenticated, filterStartDate, filterEndDate]);
-
-  React.useEffect(() => {
-    if (isAuthenticated && activeTab === 'history_abastecimentos') {
-      fetchHistoryFuel(fuelPage);
-    }
-  }, [fuelPage, activeTab, isAuthenticated, filterStartDate, filterEndDate]);
-
-  React.useEffect(() => {
-    if (isAuthenticated && activeTab === 'dashboard') {
-      fetchData();
-    }
-  }, [activeTab, isAuthenticated, filterStartDate, filterEndDate]);
-
-  React.useEffect(() => {
-    if (isAuthenticated && activeTab === 'history_manutencao') {
-      fetchHistoryMaintenance(maintenancePage);
-    }
-  }, [maintenancePage, activeTab, isAuthenticated]);
-
-  React.useEffect(() => {
-    if (isAuthenticated && activeTab === 'history_despesas') {
-      fetchHistoryExpenses(expensesPage);
-    }
-  }, [expensesPage, activeTab, isAuthenticated]);
-
-  React.useEffect(() => {
-    const handleOnline = () => showToast('Conexão restabelecida!', 'success');
-    const handleOffline = () => showToast('Você está offline. Verifique sua conexão.', 'warning');
-    const handleAuthExpired = () => {
-      setIsAuthenticated(false);
-      setUser(null);
-      showToast('Sua sessão expirou. Faça login novamente.', 'error');
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('auth:expired', handleAuthExpired);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('auth:expired', handleAuthExpired);
-    };
-  }, []);
-
-  React.useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  React.useEffect(() => {
-    fetchData();
-  }, [isAuthenticated]);
-
-  React.useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
-
-  React.useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && confirmModal && !confirmModal.isLoading) {
-        if (confirmModal.onCancel) confirmModal.onCancel();
-        setConfirmModal(null);
-      }
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [confirmModal]);
-  
-  // URL Hash Routing Sync
-  React.useEffect(() => {
-    window.location.hash = activeTab;
-  }, [activeTab]);
-
-  React.useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '');
-      const validTabs = ['dashboard', 'history_turnos', 'history_abastecimentos', 'history_manutencao', 'history_despesas', 'configuracoes'];
-      if (validTabs.includes(hash) && hash !== activeTab) {
-        setActiveTab(hash);
-      }
-    };
-    window.addEventListener('popstate', handleHashChange);
-    return () => window.removeEventListener('popstate', handleHashChange);
-  }, [activeTab]);
-
-
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const { token, user } = await api.auth.login(authForm);
-      localStorage.setItem('token', token);
-      setIsAuthenticated(true);
-      setUser(user);
-      showToast('Bem-vindo de volta!');
-    } catch (error: any) {
-      showToast(error.message, 'error');
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    try {
-      const { url } = await api.auth.getGoogleAuthUrl();
-      window.open(url, 'google_login', 'width=600,height=700');
-    } catch (error: any) {
-      showToast('Erro ao iniciar login com Google: ' + error.message, 'error');
-    }
-  };
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await api.auth.register(authForm);
-      showToast('Conta criada com sucesso! Entrando...');
-      // Auto login after successful registration
-      const { token, user } = await api.auth.login({ email: authForm.email, password: authForm.password });
-      localStorage.setItem('token', token);
-      setIsAuthenticated(true);
-      setUser(user);
-    } catch (error: any) {
-      showToast(error.message, 'error');
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    setIsAuthenticated(false);
-    setUser(null);
-    window.location.reload(); // Force reload to clear all states
-  };
+  // ─────────────────────────────────────────────────────────────
+  // All state & effects now live in AppContext + custom hooks.
+  // App() is a pure rendering orchestrator.
+  // ─────────────────────────────────────────────────────────────
+  const {
+    isAuthenticated, handleLogin, handleRegister, handleGoogleLogin, handleLogout,
+    authMode, setAuthMode, authForm, setAuthForm, showPassword, setShowPassword,
+    activeTab, setActiveTab, isSidebarOpen, setIsSidebarOpen,
+    isSidebarCollapsed, setIsSidebarCollapsed, isMounted,
+    isBottomNavVisible, isQuickAddOpen, setIsQuickAddOpen,
+    filterStartDate, setFilterStartDate, filterEndDate, setFilterEndDate,
+    user, setUser, shifts, fuelLogs, maintenanceLogs, serviceTypes,
+    fixedExpenses, fixedExpenseTypes, stats, loading, setLoading, fetchData,
+    shiftsPage, setShiftsPage, shiftsCount, historyShifts,
+    fuelPage, setFuelPage, fuelCount, historyFuel,
+    maintenancePage, setMaintenancePage, maintenanceCount, historyMaintenance,
+    expensesPage, setExpensesPage, expensesCount, historyExpenses,
+    fetchingHistory, ITEMS_PER_PAGE,
+    dashboardPeriod, setDashboardPeriod, dashboardStats,
+    periodGanhos, setPeriodGanhos, statsGanhos,
+    periodLucro, setPeriodLucro, statsLucro,
+    periodTotalKm, setPeriodTotalKm, statsTotalKm,
+    periodRentabilidade, setPeriodRentabilidade, statsRentabilidade,
+    periodRHoraLivre, setPeriodRHoraLivre, statsRHoraLivre,
+    periodVelMedia, setPeriodVelMedia, statsVelMedia,
+    periodMediaLivre, setPeriodMediaLivre, statsMediaLivre,
+    periodCustoComb, setPeriodCustoComb, statsCustoComb,
+    latestDayEarnings, smartInsight, monthlyChartData, platformData,
+    toast, showToast, clearToast,
+    confirmModal, confirmAction, dismissConfirm,
+    formErrors, setFormErrors,
+    editingShift, setEditingShift, editingMaintenance, setEditingMaintenance,
+    editingFuel, setEditingFuel, editingFixedExpense, setEditingFixedExpense,
+    selectedServiceItems, setSelectedServiceItems, serviceSearch, setServiceSearch,
+    totalKm, setTotalKm, shiftPlatforms, setShiftPlatforms,
+    fuelPrice, setFuelPrice, fuelLiters, setFuelLiters, fuelTotal,
+    darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled,
+    isPasswordModalOpen, setIsPasswordModalOpen, passwordForm, setPasswordForm,
+    settingsTab, setSettingsTab, isExportModalOpen, setIsExportModalOpen,
+    isAIModalOpen, setIsAIModalOpen, aiAnalysisResult, setAiAnalysisResult,
+    isHealthCollapsed, setIsHealthCollapsed, showInsight, setShowInsight,
+    isServiceModalOpen, setIsServiceModalOpen, isPro,
+  } = useApp();
+
+  // Backward-compat alias (alguns lugares no JSX chamam setToast(null))
+  const setToast = (v: any) => { if (!v) clearToast(); };
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -1046,353 +222,199 @@ export default function App() {
     setEditingMaintenance(null);
     setSelectedServiceItems([]);
     setServiceSearch('');
-    if (window.innerWidth < 1024) {
-      setIsSidebarOpen(false);
-    }
   };
 
   const handleSaveShift = async (e: any) => {
-    e.preventDefault();
-    setFormErrors({});
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    
+    e.preventDefault(); setFormErrors({});
+    const data = Object.fromEntries(new FormData(e.target).entries());
     setLoading(true);
     try {
       const activePlatforms = shiftPlatforms.filter(p => parseFloat(p.earnings.replace(',', '.')) > 0);
       const kmValue = parseFloat(totalKm.replace(',', '.'));
       const errors: any = {};
-
-      if (isNaN(kmValue) || kmValue <= 0) {
-        errors.totalKm = 'O KM total do turno deve ser um número positivo e maior que zero.';
-      }
-      
-      if (activePlatforms.length === 0) {
-        errors.platforms = 'Informe os ganhos em pelo menos uma plataforma.';
-      }
-
-      if (Object.keys(errors).length > 0) {
-        setFormErrors(errors);
-        return;
-      }
-
-      if (editingShift) {
-        await api.shifts.deleteGroup(editingShift.date, editingShift.shift_type);
-      }
-
-      await Promise.all(activePlatforms.map((p, index) => 
-        api.shifts.create({
-          date: data.date,
-          shift_type: data.shift_type,
-          platform: p.name,
-          km: index === 0 ? kmValue : 0,
-          start_time: data.start_time,
-          end_time: data.end_time,
-          earnings: parseFloat(p.earnings.replace(',', '.')),
-          tips: parseFloat(p.tips?.replace(',', '.') || '0'),
-          rides_count: parseInt(p.rides_count || '0'),
-          vehicle_name: data.vehicle_name as string,
-          driver_name: data.driver_name as string
-        })
-      ));
-
-      // Update user odometer automatically (only on CREATE, not on edit)
-      if (!editingShift && user) {
-        await api.auth.updateProfile({
-          ...user,
-          vehicle_odometer: (user.vehicle_odometer || 0) + kmValue
-        });
-      }
-
-      setTotalKm('');
-      setShiftPlatforms([
-        { name: 'Uber', earnings: '', tips: '', rides_count: '' },
-        { name: '99Pop', earnings: '', tips: '', rides_count: '' },
-        { name: 'InDriver', earnings: '', tips: '', rides_count: '' },
-        { name: 'Particular', earnings: '', tips: '', rides_count: '' },
-      ]);
-      setEditingShift(null);
-      
-      showToast(editingShift ? 'Turno atualizado com sucesso!' : 'Turno salvo com sucesso!');
-      fetchData();
-      setActiveTab('dashboard');
+      if (isNaN(kmValue) || kmValue <= 0) errors.totalKm = 'O KM total do turno deve ser um número positivo.';
+      if (!activePlatforms.length) errors.platforms = 'Informe os ganhos em pelo menos uma plataforma.';
+      if (Object.keys(errors).length) { setFormErrors(errors); return; }
+      if (editingShift) await api.shifts.deleteGroup(editingShift.date, editingShift.shift_type);
+      await Promise.all(activePlatforms.map((p, i) => api.shifts.create({
+        date: data.date, shift_type: data.shift_type, platform: p.name, km: i === 0 ? kmValue : 0,
+        start_time: data.start_time, end_time: data.end_time,
+        earnings: parseFloat(p.earnings.replace(',', '.')), tips: parseFloat(p.tips?.replace(',', '.') || '0'),
+        rides_count: parseInt(p.rides_count || '0'), vehicle_name: data.vehicle_name as string, driver_name: data.driver_name as string
+      })));
+      if (!editingShift && user) await api.auth.updateProfile({ ...user, vehicle_odometer: (user.vehicle_odometer || 0) + kmValue });
+      setTotalKm(''); setShiftPlatforms([{ name: 'Uber', earnings: '', tips: '', rides_count: '' }, { name: '99Pop', earnings: '', tips: '', rides_count: '' }, { name: 'InDriver', earnings: '', tips: '', rides_count: '' }, { name: 'Particular', earnings: '', tips: '', rides_count: '' }]); setEditingShift(null);
+      showToast(editingShift ? 'Turno atualizado!' : 'Turno salvo!'); fetchData(); setActiveTab('dashboard');
     } catch (error: any) {
-      if (error.status === 422 && error.details) {
-        const fieldErrors: any = {};
-        error.details.forEach((detail: any) => {
-          fieldErrors[detail.field] = detail.message;
-        });
-        setFormErrors(fieldErrors);
-        showToast('Verifique os campos destacados', 'error');
-      } else {
-        showToast(error.message, 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
+      if (error.status === 422 && error.details) { const fe: any = {}; error.details.forEach((d: any) => { fe[d.field] = d.message; }); setFormErrors(fe); showToast('Verifique os campos destacados', 'error'); }
+      else showToast(error.message, 'error');
+    } finally { setLoading(false); }
   };
 
   const handleSaveFuel = async (e: any) => {
-    e.preventDefault();
-    setFormErrors({});
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    
+    e.preventDefault(); setFormErrors({});
+    const data = Object.fromEntries(new FormData(e.target).entries());
     setLoading(true);
     try {
       const errors: any = {};
-      const odometer = parseFloat(data.odometer as string);
-      const price = parseFloat(fuelPrice);
-      const liters = parseFloat(fuelLiters);
-
-      if (isNaN(odometer) || odometer <= 0) errors.odometer = 'Informe o odômetro atual.';
+      const odometer = parseFloat(data.odometer as string), price = parseFloat(fuelPrice), liters = parseFloat(fuelLiters);
+      if (isNaN(odometer) || odometer <= 0) errors.odometer = 'Informe o odômetro.';
       if (isNaN(price) || price <= 0) errors.fuelPrice = 'Informe o preço por litro.';
       if (isNaN(liters) || liters <= 0) errors.fuelLiters = 'Informe a quantidade de litros.';
-
-      if (Object.keys(errors).length > 0) {
-        setFormErrors(errors);
-        return;
-      }
-
-      if (editingFuel) {
-        await api.fuel.update(editingFuel.id, {
-          date: data.date,
-          odometer,
-          fuel_type: data.fuel_type,
-          price_per_liter: price,
-          liters,
-          total_value: parseFloat(fuelTotal),
-          vehicle_name: data.vehicle_name as string,
-          driver_name: data.driver_name as string,
-          is_full_tank: data.is_full_tank === 'on' ? 1 : 0
-        });
-        setEditingFuel(null);
-      } else {
-        await api.fuel.create({
-          date: data.date,
-          odometer,
-          fuel_type: data.fuel_type,
-          price_per_liter: price,
-          liters,
-          total_value: parseFloat(fuelTotal),
-          vehicle_name: data.vehicle_name as string,
-          driver_name: data.driver_name as string,
-          is_full_tank: data.is_full_tank === 'on' ? 1 : 0
-        });
-      }
-
-      // Update user odometer if higher
-      if (user && odometer > (user.vehicle_odometer || 0)) {
-        await api.auth.updateProfile({
-          ...user,
-          vehicle_odometer: odometer
-        });
-      }
-      
-      showToast(editingFuel ? 'Abastecimento atualizado!' : 'Abastecimento registrado com sucesso!');
-      fetchData();
-      setActiveTab('dashboard');
+      if (Object.keys(errors).length) { setFormErrors(errors); return; }
+      const payload = { date: data.date, odometer, fuel_type: data.fuel_type, price_per_liter: price, liters, total_value: parseFloat(fuelTotal), vehicle_name: data.vehicle_name as string, driver_name: data.driver_name as string, is_full_tank: data.is_full_tank === 'on' ? 1 : 0 };
+      if (editingFuel) { await api.fuel.update(editingFuel.id, payload); setEditingFuel(null); } else { await api.fuel.create(payload); }
+      if (user && odometer > (user.vehicle_odometer || 0)) await api.auth.updateProfile({ ...user, vehicle_odometer: odometer });
+      showToast(editingFuel ? 'Abastecimento atualizado!' : 'Abastecimento registrado!'); fetchData(); setActiveTab('dashboard');
     } catch (error: any) {
-      if (error.status === 422 && error.details) {
-        const fieldErrors: any = {};
-        error.details.forEach((detail: any) => {
-          fieldErrors[detail.field] = detail.message;
-        });
-        setFormErrors(fieldErrors);
-        showToast('Verifique os campos destacados', 'error');
-      } else {
-        showToast(error.message, 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
+      if (error.status === 422 && error.details) { const fe: any = {}; error.details.forEach((d: any) => { fe[d.field] = d.message; }); setFormErrors(fe); showToast('Verifique os campos destacados', 'error'); }
+      else showToast(error.message, 'error');
+    } finally { setLoading(false); }
   };
 
-  const handleDeleteFuel = async (id: number) => {
-    confirmAction({
-      title: 'Excluir Abastecimento',
-      message: 'Tem certeza que deseja excluir este registro de abastecimento?',
-      confirmLabel: 'Excluir',
-      variant: 'danger',
-      onConfirm: async () => {
-        await api.fuel.delete(id);
-        showToast('Abastecimento excluído com sucesso!');
-        fetchData();
-      }
-    });
-  };
+  const handleDeleteFuel = (id: number) => confirmAction({ title: 'Excluir Abastecimento', message: 'Deseja excluir este registro?', confirmLabel: 'Excluir', variant: 'danger', onConfirm: async () => { await api.fuel.delete(id); showToast('Abastecimento excluído!'); fetchData(); } });
 
   const handleSaveMaintenance = async (e: any) => {
-    e.preventDefault();
-    setFormErrors({});
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    
+    e.preventDefault(); setFormErrors({});
+    const data = Object.fromEntries(new FormData(e.target).entries());
     setLoading(true);
     try {
-      const errors: any = {};
-      const odometer = parseFloat(data.odometer as string);
-      
-      const isMultiService = selectedServiceItems.length > 0;
-      const combinedServiceType = isMultiService
-        ? selectedServiceItems.map(s => s.name).join(', ')
-        : (data.service_type as string);
-
-      const computedCost = isMultiService
-        ? selectedServiceItems.reduce((acc, curr) => acc + (parseFloat(curr.cost || '0')), 0)
-        : parseFloat(data.cost as string);
-
+      const errors: any = {}, odometer = parseFloat(data.odometer as string);
+      const isMulti = selectedServiceItems.length > 0;
+      const svcType = isMulti ? selectedServiceItems.map(s => s.name).join(', ') : (data.service_type as string);
+      const cost = isMulti ? selectedServiceItems.reduce((a, c) => a + parseFloat(c.cost || '0'), 0) : parseFloat(data.cost as string);
       if (isNaN(odometer) || odometer <= 0) errors.odometer = 'Informe o odômetro.';
-      if (isNaN(computedCost) || computedCost < 0) errors.cost = 'Informe o custo total.';
-      if (!combinedServiceType) errors.service_type = 'Selecione pelo menos um serviço.';
-
-      if (Object.keys(errors).length > 0) {
-        setFormErrors(errors);
-        setLoading(false);
-        return;
-      }
-
-      const maintenanceData = {
-        date: data.date,
-        odometer,
-        service_type: combinedServiceType,
-        category: data.category as string,
-        description: data.description as string,
-        cost: computedCost,
-        attachment_url: editingMaintenance?.attachment_url || '',
-        vehicle_name: data.vehicle_name as string,
-        driver_name: data.driver_name as string
-      };
-
-      if (editingMaintenance && editingMaintenance.id) {
-        await api.maintenance.update(editingMaintenance.id, maintenanceData);
-        setEditingMaintenance(null);
-      } else {
-        await api.maintenance.create(maintenanceData);
-      }
+      if (isNaN(cost) || cost < 0) errors.cost = 'Informe o custo.';
+      if (!svcType) errors.service_type = 'Selecione um serviço.';
+      if (Object.keys(errors).length) { setFormErrors(errors); setLoading(false); return; }
+      const payload = { date: data.date, odometer, service_type: svcType, category: data.category as string, description: data.description as string, cost, attachment_url: editingMaintenance?.attachment_url || '', vehicle_name: data.vehicle_name as string, driver_name: data.driver_name as string };
+      if (editingMaintenance?.id) { await api.maintenance.update(editingMaintenance.id, payload); setEditingMaintenance(null); } else { await api.maintenance.create(payload); }
       setSelectedServiceItems([]);
-
-      // Update user odometer if higher
-      if (user && odometer > (user.vehicle_odometer || 0)) {
-        await api.auth.updateProfile({
-          ...user,
-          vehicle_odometer: odometer
-        });
-      }
-      
-      showToast(editingMaintenance ? 'Manutenção atualizada!' : 'Manutenção registrada!');
-      fetchData();
-      setActiveTab('dashboard');
+      if (user && odometer > (user.vehicle_odometer || 0)) await api.auth.updateProfile({ ...user, vehicle_odometer: odometer });
+      showToast(editingMaintenance ? 'Manutenção atualizada!' : 'Manutenção registrada!'); fetchData(); setActiveTab('dashboard');
     } catch (error: any) {
-      if (error.status === 422 && error.details) {
-        const fieldErrors: any = {};
-        error.details.forEach((detail: any) => {
-          fieldErrors[detail.field] = detail.message;
-        });
-        setFormErrors(fieldErrors);
-        showToast('Verifique os campos destacados', 'error');
-      } else {
-        showToast(error.message, 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
+      if (error.status === 422 && error.details) { const fe: any = {}; error.details.forEach((d: any) => { fe[d.field] = d.message; }); setFormErrors(fe); showToast('Verifique os campos destacados', 'error'); }
+      else showToast(error.message, 'error');
+    } finally { setLoading(false); }
   };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordForm.newPassword !== passwordForm.confirmNewPassword) {
-      showToast('As novas senhas não coincidem', 'error');
-      return;
-    }
-    if (passwordForm.newPassword.length < 8) {
-      showToast('A nova senha deve ter no mínimo 8 caracteres', 'error');
-      return;
-    }
-    
+    if (passwordForm.newPassword !== passwordForm.confirmNewPassword) { showToast('As senhas não coincidem', 'error'); return; }
+    if (passwordForm.newPassword.length < 8) { showToast('Senha mínima: 8 caracteres', 'error'); return; }
     setLoading(true);
-    try {
-      await api.auth.changePassword({
-        currentPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword
-      });
-      showToast('Senha alterada com sucesso!', 'success');
-      setIsPasswordModalOpen(false);
-      setPasswordForm({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
-    } catch (error: any) {
-      showToast(error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+    try { await api.auth.changePassword({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword }); showToast('Senha alterada!', 'success'); setIsPasswordModalOpen(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmNewPassword: '' }); }
+    catch (error: any) { showToast(error.message, 'error'); } finally { setLoading(false); }
   };
 
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
       const { monthly_goal, ...userPayload } = user || {};
-
-      if (monthly_goal !== undefined && monthly_goal !== null) {
-        localStorage.setItem('@VeiculoPro:monthly_goal', monthly_goal.toString());
-      } else {
-        localStorage.removeItem('@VeiculoPro:monthly_goal');
-      }
-
-      await api.auth.updateProfile({
-        ...userPayload,
-        dark_mode: darkMode ? 1 : 0,
-        notifications_enabled: notificationsEnabled ? 1 : 0
-      });
-
-      showToast('Configurações atualizadas com sucesso!');
+      if (monthly_goal != null) localStorage.setItem('@VeiculoPro:monthly_goal', monthly_goal.toString()); else localStorage.removeItem('@VeiculoPro:monthly_goal');
+      await api.auth.updateProfile({ ...userPayload, dark_mode: darkMode ? 1 : 0, notifications_enabled: notificationsEnabled ? 1 : 0 });
+      showToast('Configurações atualizadas!');
     } catch (error: any) {
-      if (error.status === 422 && error.details?.length) {
-        const firstError = error.details[0];
-        showToast(`Campo inválido: ${firstError.field} — ${firstError.message}`, 'error');
-      } else {
-        showToast(error.message, 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
+      if (error.status === 422 && error.details?.length) showToast(`Campo inválido: ${error.details[0].field} — ${error.details[0].message}`, 'error');
+      else showToast(error.message, 'error');
+    } finally { setLoading(false); }
   };
 
   const handleSyncGooglePhoto = async () => {
-    if (user?.photo_url) {
-      try {
-        await api.auth.updateProfile({ ...user, photo_url: user.photo_url });
-        await fetchData();
-        showToast('Foto sincronizada!');
-      } catch (error: any) {
-        showToast('Erro ao sincronizar foto: ' + error.message, 'error');
-      }
-    } else {
-      showToast('Nenhuma foto encontrada na conta Google.', 'error');
-    }
+    if (user?.photo_url) { try { await api.auth.updateProfile({ ...user, photo_url: user.photo_url }); await fetchData(); showToast('Foto sincronizada!'); } catch (error: any) { showToast('Erro: ' + error.message, 'error'); } }
+    else showToast('Nenhuma foto Google encontrada.', 'error');
   };
 
+  const handleDeleteShiftGroup = (date: string, shiftType: string) => confirmAction({ title: 'Excluir Turno', message: 'Excluir turno e todos os registros?', confirmLabel: 'Excluir', variant: 'danger', onConfirm: async () => { await api.shifts.deleteGroup(date, shiftType); showToast('Turno excluído!'); fetchData(); } });
+  const handleDeleteMaintenance = (id: number) => confirmAction({ title: 'Excluir Manutenção', message: 'Deseja excluir este registro?', confirmLabel: 'Excluir', variant: 'danger', onConfirm: async () => { await api.maintenance.delete(id); showToast('Manutenção excluída!'); fetchData(); } });
+
+  const handleAddServiceType = async (name: string) => { if (!name.trim()) return; setLoading(true); try { await api.serviceTypes.create({ name }); showToast('Tipo adicionado'); fetchData(); } catch (error: any) { showToast(error.message, 'error'); } finally { setLoading(false); } };
+  const handleDeleteServiceType = (id: number) => confirmAction({ title: 'Excluir Tipo', message: 'Excluir este tipo de serviço?', confirmLabel: 'Excluir', variant: 'danger', onConfirm: async () => { await api.serviceTypes.delete(id); showToast('Tipo excluído'); fetchData(); } });
+
+  const handleSaveFixedExpense = async (e: any) => {
+    e.preventDefault(); setFormErrors({});
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    setLoading(true);
+    try {
+      const errors: any = {}, value = parseFloat(data.value as string);
+      if (isNaN(value) || value <= 0) errors.value = 'Informe o valor.';
+      if (!data.expense_type) errors.expense_type = 'Selecione o tipo.';
+      if (Object.keys(errors).length) { setFormErrors(errors); return; }
+      const payload = { date: data.date as string, expense_type: data.expense_type as string, category: (data.category as string) || 'Outros', value, description: data.description as string, vehicle_name: data.vehicle_name as string, driver_name: data.driver_name as string };
+      if (editingFixedExpense) { await api.fixedExpenses.update(editingFixedExpense.id, payload); setEditingFixedExpense(null); } else { await api.fixedExpenses.create(payload); }
+      showToast(editingFixedExpense ? 'Despesa atualizada!' : 'Despesa registrada!'); fetchData(); setActiveTab('dashboard');
+    } catch (error: any) {
+      if (error.status === 422 && error.details) { const fe: any = {}; error.details.forEach((d: any) => { fe[d.field] = d.message; }); setFormErrors(fe); showToast('Verifique os campos', 'error'); }
+      else showToast(error.message, 'error');
+    } finally { setLoading(false); }
+  };
+
+  const handleDeleteFixedExpense = (id: number) => confirmAction({ title: 'Excluir Despesa', message: 'Excluir este registro?', confirmLabel: 'Excluir', variant: 'danger', onConfirm: async () => { await api.fixedExpenses.delete(id); showToast('Despesa excluída!'); fetchData(); } });
+  const handleAddFixedExpenseType = async (name: string) => { if (!name.trim()) return; setLoading(true); try { await api.fixedExpenseTypes.create({ name }); showToast('Tipo adicionado!'); fetchData(); } catch (error: any) { showToast(error.message, 'error'); } finally { setLoading(false); } };
+  const handleDeleteFixedExpenseType = (id: number) => confirmAction({ title: 'Excluir Tipo', message: 'Excluir este tipo de despesa?', confirmLabel: 'Excluir', variant: 'danger', onConfirm: async () => { await api.fixedExpenseTypes.delete(id); showToast('Tipo excluído!'); fetchData(); } });
+
+  // ── Report / Export filter state ──────────────────────────────────────────
+  const [reportPeriod, setReportPeriod] = React.useState('mes_atual');
+  const [reportPlatform, setReportPlatform] = React.useState('');
+  const [reportVehicle, setReportVehicle] = React.useState('');
+  const [reportDriver, setReportDriver] = React.useState('');
+  const [reportFuelType, setReportFuelType] = React.useState('');
+  const [reportVehicleType, setReportVehicleType] = React.useState('');
+  const [reportCategory, setReportCategory] = React.useState('');
+
+  // ── Confirm modal alias (backward compat — JSX may call setConfirmModal(null)) ──
+  const setConfirmModal = (_: any) => dismissConfirm();
+
+  // ── Fuel Efficiency Data (useMemo — was a useMemo in the original App.tsx) ──
+  const fuelEfficiencyData = useMemo(() => {
+    if (!fuelLogs || fuelLogs.length < 2) return [];
+    const sorted = [...fuelLogs].sort((a, b) => (a.date as string) > (b.date as string) ? 1 : -1);
+    const result = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1], curr = sorted[i];
+      if (prev.odometer && curr.odometer && curr.liters) {
+        const km = curr.odometer - prev.odometer;
+        if (km > 0 && km < 2000) result.push({ date: curr.date, efficiency: km / curr.liters, km });
+      }
+    }
+    return result;
+  }, [fuelLogs]);
+
+  // ── Vehicle Depreciation (useMemo) ────────────────────────────────────────
+  const vehicleDepreciation = useMemo(() => {
+    if (!user?.vehicle_purchase_price || !user?.vehicle_year) return null;
+    const age = new Date().getFullYear() - parseInt(user.vehicle_year);
+    const depRate = 0.15;
+    const currentValue = user.vehicle_purchase_price * Math.pow(1 - depRate, age);
+    const annualDep = user.vehicle_purchase_price * depRate * Math.pow(1 - depRate, Math.max(0, age - 1));
+    const monthlyDep = annualDep / 12;
+    return { currentValue: Math.max(currentValue, user.vehicle_purchase_price * 0.1), annualDep, monthlyDep, totalDep: user.vehicle_purchase_price - Math.max(currentValue, user.vehicle_purchase_price * 0.1) };
+  }, [user]);
+
+  // ── Maintenance Alerts (useMemo) ──────────────────────────────────────────
+  const maintenanceAlerts = useMemo(() => {
+    if (!maintenanceLogs?.length) return [];
+    const alerts: any[] = [];
+    const oilChanges = maintenanceLogs.filter(m => m.service_type?.toLowerCase().includes('óleo') || m.service_type?.toLowerCase().includes('oil'));
+    if (oilChanges.length) {
+      const last = oilChanges.reduce((a, b) => (a.date > b.date ? a : b));
+      const lastOdo = last.odometer || 0;
+      const currentOdo = user?.vehicle_odometer || 0;
+      if (currentOdo - lastOdo > 4500) alerts.push({ type: 'oil', message: 'Troca de óleo em breve', km: currentOdo - lastOdo });
+    }
+    return alerts;
+  }, [maintenanceLogs, user]);
+
+  // ── handleExportPDF ───────────────────────────────────────────────────────
   const handleExportPDF = async (
     exportType: 'summary' | 'full' | 'shifts_only' | 'maintenance_only' | 'fuel_only' | 'expenses_only' = 'full',
-    customData?: {
-      shifts?: any[];
-      fuel?: any[];
-      maintenance?: any[];
-      fixedExpenses?: any[];
-      earnings?: number;
-      expenses?: number;
-      km?: number;
-      title?: string;
-      vehicleName?: string;
-      driverName?: string;
-      startDate?: string;
-      endDate?: string;
-    }
+    customData?: any
   ) => {
     const { default: jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
-    const primaryColor = { r: 16, g: 185, b: 129 }; // Emerald-600
-
-    // Determine data source: use customData if provided, otherwise use current state
+    const primaryColor = { r: 16, g: 185, b: 129 };
     const dataToUse = {
       shifts: customData?.shifts ?? shifts,
       fuel: customData?.fuel ?? fuelLogs,
@@ -1402,512 +424,89 @@ export default function App() {
       expenses: customData?.expenses ?? stats?.totalExpenses ?? 0,
       km: customData?.km ?? stats?.totalKm ?? 0,
       title: customData?.title || 'Relatório VeiculoPro',
-      vehicleName: customData?.vehicleName || user?.vehicle_model || 'Veículo Desconhecido',
-      driverName: customData?.driverName || user?.name || 'Motorista Desconhecido',
+      vehicleName: customData?.vehicleName || user?.vehicle_model || 'Veículo',
+      driverName: customData?.driverName || user?.name || 'Motorista',
       startDate: customData?.startDate || filterStartDate || '',
       endDate: customData?.endDate || filterEndDate || '',
     };
-
-    // Calculate derived values
     const profit = dataToUse.earnings - dataToUse.expenses;
     const rentability = dataToUse.km > 0 ? (dataToUse.earnings / dataToUse.km) : 0;
-
-    // --- Header ---
     doc.setFillColor(primaryColor.r, primaryColor.g, primaryColor.b);
     doc.rect(0, 0, pageWidth, 40, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(24); doc.setFont('helvetica', 'bold');
     doc.text('VeiculoPro', 15, 20);
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal');
     doc.text(dataToUse.title, 15, 30);
-    doc.text(`Veículo: ${dataToUse.vehicleName}`, 15, 36);
-    doc.text(`Motorista: ${dataToUse.driverName}`, 15, 42);
-
-    const dateRange = `${dataToUse.startDate ? parseLocalDate(dataToUse.startDate).toLocaleDateString('pt-BR') : 'Início'} a ${dataToUse.endDate ? parseLocalDate(dataToUse.endDate).toLocaleDateString('pt-BR') : 'Fim'}`;
-    doc.text(`Período: ${dateRange}`, pageWidth - 15, 30, { align: 'right' });
-    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, pageWidth - 15, 36, { align: 'right' });
-
-    let y = 50; // Initial Y position after header
-
-    // --- Check if there's any data to export ---
-    const hasData = (exportType === 'shifts_only' && dataToUse.shifts.length > 0) ||
-                    (exportType === 'fuel_only' && dataToUse.fuel.length > 0) ||
-                    (exportType === 'maintenance_only' && dataToUse.maintenance.length > 0) ||
-                    (exportType === 'expenses_only' && dataToUse.fixedExpenses.length > 0) ||
-                    (exportType === 'summary' && (dataToUse.earnings > 0 || dataToUse.expenses > 0 || dataToUse.km > 0)) ||
-                    (exportType === 'full' && (
-                      dataToUse.shifts.length > 0 ||
-                      dataToUse.fuel.length > 0 ||
-                      dataToUse.maintenance.length > 0 ||
-                      dataToUse.fixedExpenses.length > 0 ||
-                      dataToUse.earnings > 0 || dataToUse.expenses > 0 || dataToUse.km > 0
-                    ));
-
-    if (!hasData) {
-      doc.setTextColor(15, 23, 42); // Slate-900
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Nenhum dado encontrado para o período selecionado.', 15, y + 10);
-      doc.save(`veiculopro_relatorio_${dataToUse.title.replace(/[^a-zA-Z0-9]/g, '_')}_vazio_${new Date().toISOString().split('T')[0]}.pdf`);
-      showToast('Nenhum dado encontrado para exportar.');
-      return;
+    doc.text(`Gerado: ${new Date().toLocaleString('pt-BR')}`, pageWidth - 15, 30, { align: 'right' });
+    let y = 50;
+    const addSection = (title: string, head: string[][], body: any[][]) => {
+      if (!body.length) return;
+      if (y > 230) { doc.addPage(); y = 20; }
+      doc.setFontSize(14); doc.setTextColor(15, 23, 42); doc.setFont('helvetica', 'bold');
+      doc.text(title, 15, y); y += 8;
+      (autoTable as any)(doc, { head, body, startY: y, theme: 'grid', headStyles: { fillColor: [primaryColor.r, primaryColor.g, primaryColor.b], textColor: 255 }, margin: { left: 15, right: 15 } });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    };
+    if (exportType === 'full' || exportType === 'summary') {
+      doc.setFontSize(12); doc.setTextColor(15, 23, 42); doc.setFont('helvetica', 'bold');
+      doc.text('Resumo Financeiro', 15, y); y += 8;
+      const summaryData = [['Ganhos', `R$ ${dataToUse.earnings.toFixed(2)}`], ['Despesas', `R$ ${dataToUse.expenses.toFixed(2)}`], ['Lucro', `R$ ${profit.toFixed(2)}`], ['KM', `${dataToUse.km.toFixed(0)} km`], ['R$/km', `R$ ${rentability.toFixed(2)}`]];
+      (autoTable as any)(doc, { body: summaryData, startY: y, theme: 'plain', margin: { left: 15, right: 15 } });
+      y = (doc as any).lastAutoTable.finalY + 10;
     }
-
-    // --- Summary Section ---
-    if (exportType === 'summary' || exportType === 'full') {
-      doc.setTextColor(15, 23, 42); // Slate-900
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Resumo Financeiro', 15, y + 10);
-
-      const summaryData = [
-        ['Ganhos Brutos', `R$ ${dataToUse.earnings.toFixed(2)}`],
-        ['Total Gastos', `R$ ${dataToUse.expenses.toFixed(2)}`],
-        ['Lucro Líquido', `R$ ${profit.toFixed(2)}`],
-        ['KM Rodados', `${dataToUse.km.toFixed(0)} km`],
-        ['Rentabilidade', `R$ ${rentability.toFixed(2)}/km`]
-      ];
-
-      autoTable(doc, {
-        startY: y + 15,
-        head: [['Métrica', 'Valor']],
-        body: summaryData,
-        theme: 'plain',
-        styles: {
-          fontStyle: 'bold',
-          textColor: [15, 23, 42], // Slate-900
-          fontSize: 12,
-          cellPadding: { top: 8, right: 10, bottom: 8, left: 10 },
-        },
-        headStyles: {
-          fillColor: [241, 245, 249], // Slate-50
-          textColor: [51, 65, 85], // Slate-700
-          fontSize: 10,
-          fontStyle: 'normal',
-          halign: 'left',
-        },
-        bodyStyles: {
-          halign: 'left',
-        },
-        columnStyles: {
-          0: { cellWidth: 'auto' },
-          1: { cellWidth: 'auto', halign: 'right' },
-        },
-      });
-      y = (doc as any).lastAutoTable.finalY + 15;
+    if (exportType !== 'summary') {
+      if (exportType === 'full' || exportType === 'shifts_only') addSection('Turnos', [['Data', 'Turno', 'Plataforma', 'Ganhos', 'KM']], dataToUse.shifts.map((s: any) => [s.date, s.shift_type, s.platform, `R$ ${(s.earnings || 0).toFixed(2)}`, s.km || 0]));
+      if (exportType === 'full' || exportType === 'fuel_only') addSection('Abastecimentos', [['Data', 'Litros', 'Preço/L', 'Total']], dataToUse.fuel.map((f: any) => [f.date, `${f.liters}L`, `R$ ${f.price_per_liter}`, `R$ ${f.total_value}`]));
+      if (exportType === 'full' || exportType === 'maintenance_only') addSection('Manutenções', [['Data', 'Serviço', 'Custo']], dataToUse.maintenance.map((m: any) => [m.date, m.service_type, `R$ ${m.cost}`]));
+      if (exportType === 'full' || exportType === 'expenses_only') addSection('Despesas Fixas', [['Data', 'Tipo', 'Valor']], dataToUse.fixedExpenses.map((e: any) => [e.date, e.expense_type, `R$ ${e.value}`]));
     }
-
-    // --- Shifts Table ---
-    if (exportType === 'shifts_only' || exportType === 'full') {
-      if (dataToUse.shifts.length > 0) {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Histórico de Turnos', 15, y + 10);
-
-        const shiftsData = dataToUse.shifts.map(s => [
-          parseLocalDate(s.date).toLocaleDateString('pt-BR'),
-          s.platform,
-          s.shift_type,
-          `${s.km} km`,
-          `R$ ${s.earnings.toFixed(2)}`,
-          s.start_time ? `${s.start_time} - ${s.end_time}` : '-',
-          s.driver_name || '-',
-          s.vehicle_name || '-',
-        ]);
-
-        autoTable(doc, {
-          startY: y + 15,
-          head: [['Data', 'Plataforma', 'Turno', 'KM', 'Ganhos', 'Horário', 'Motorista', 'Veículo']],
-          body: shiftsData,
-          theme: 'striped',
-          styles: {
-            fontSize: 9,
-            cellPadding: { top: 5, right: 8, bottom: 5, left: 8 },
-          },
-          headStyles: {
-            fillColor: [primaryColor.r, primaryColor.g, primaryColor.b],
-            textColor: [255, 255, 255],
-            fontSize: 10,
-            fontStyle: 'bold',
-            halign: 'center',
-          },
-          bodyStyles: {
-            halign: 'center',
-          },
-          columnStyles: {
-            0: { halign: 'left' }, // Data
-            1: { cellWidth: 'auto' },
-            2: { cellWidth: 'auto' },
-            3: { cellWidth: 25 }, // KM
-            4: { cellWidth: 30, halign: 'right' }, // Ganhos
-            5: { cellWidth: 40 }, // Horário
-            6: { cellWidth: 'auto' }, // Motorista
-            7: { cellWidth: 'auto' }, // Veículo
-          },
-        });
-        y = (doc as any).lastAutoTable.finalY + 15;
-      }
-    }
-
-    // --- Fuel Logs Table ---
-    if (exportType === 'fuel_only' || exportType === 'full') {
-      if (dataToUse.fuel.length > 0) {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Histórico de Abastecimentos', 15, y + 10);
-
-        const fuelData = dataToUse.fuel.map(f => [
-          parseLocalDate(f.date).toLocaleDateString('pt-BR'),
-          f.fuel_type,
-          `${f.odometer} km`,
-          `${f.liters} L`,
-          `R$ ${f.price_per_liter.toFixed(2)}/L`,
-          `R$ ${f.total_value.toFixed(2)}`,
-          f.driver_name || '-',
-          f.vehicle_name || '-',
-        ]);
-
-        autoTable(doc, {
-          startY: y + 15,
-          head: [['Data', 'Combustível', 'Odômetro', 'Litros', 'Preço/L', 'Total', 'Motorista', 'Veículo']],
-          body: fuelData,
-          theme: 'striped',
-          styles: { fontSize: 9, cellPadding: 5 },
-          headStyles: {
-            fillColor: [primaryColor.r, primaryColor.g, primaryColor.b],
-            textColor: [255, 255, 255],
-            fontSize: 10,
-            fontStyle: 'bold',
-            halign: 'center',
-          },
-          bodyStyles: { halign: 'center' },
-          columnStyles: {
-            0: { halign: 'left' },
-            5: { halign: 'right' },
-          },
-        });
-        y = (doc as any).lastAutoTable.finalY + 15;
-      }
-    }
-
-    // --- Maintenance Logs Table ---
-    if (exportType === 'maintenance_only' || exportType === 'full') {
-      if (dataToUse.maintenance.length > 0) {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Histórico de Manutenção', 15, y + 10);
-
-        const maintenanceData = dataToUse.maintenance.map(m => [
-          parseLocalDate(m.date).toLocaleDateString('pt-BR'),
-          m.service_type,
-          m.category,
-          m.description || '-',
-          `${m.odometer} km`,
-          `R$ ${m.cost.toFixed(2)}`,
-          m.driver_name || '-',
-          m.vehicle_name || '-',
-        ]);
-
-        autoTable(doc, {
-          startY: y + 15,
-          head: [['Data', 'Serviço', 'Categoria', 'Descrição', 'Odômetro', 'Custo', 'Motorista', 'Veículo']],
-          body: maintenanceData,
-          theme: 'plain',
-          styles: { fontSize: 9, cellPadding: 5 },
-          headStyles: {
-            fillColor: [primaryColor.r, primaryColor.g, primaryColor.b],
-            textColor: [255, 255, 255],
-            fontSize: 10,
-            fontStyle: 'bold',
-            halign: 'center',
-          },
-          bodyStyles: { halign: 'left' },
-          columnStyles: {
-            0: { halign: 'left' },
-            5: { halign: 'right' },
-          },
-        });
-        y = (doc as any).lastAutoTable.finalY + 15;
-      }
-    }
-
-    // --- Fixed Expenses Table ---
-    if (exportType === 'expenses_only' || exportType === 'full') {
-      if (dataToUse.fixedExpenses.length > 0) {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Despesas Fixas e Variáveis', 15, y + 10);
-
-        const expensesData = dataToUse.fixedExpenses.map(e => [
-          parseLocalDate(e.date).toLocaleDateString('pt-BR'),
-          e.expense_type,
-          e.category,
-          e.description || '-',
-          `R$ ${e.value.toFixed(2)}`,
-          e.driver_name || '-',
-          e.vehicle_name || '-',
-        ]);
-
-        autoTable(doc, {
-          startY: y + 15,
-          head: [['Data', 'Despesa', 'Categoria', 'Descrição', 'Valor', 'Motorista', 'Veículo']],
-          body: expensesData,
-          theme: 'striped',
-          styles: { fontSize: 9, cellPadding: 5 },
-          headStyles: {
-            fillColor: [primaryColor.r, primaryColor.g, primaryColor.b],
-            textColor: [255, 255, 255],
-            fontSize: 10,
-            fontStyle: 'bold',
-            halign: 'center',
-          },
-          bodyStyles: { halign: 'left' },
-          columnStyles: {
-            0: { halign: 'left' },
-            4: { halign: 'right' },
-          },
-        });
-      }
-    }
-
-    doc.save(`veiculopro_relatorio_${dataToUse.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
-    showToast('Relatório PDF gerado com sucesso!');
+    doc.save(`veiculopro_${exportType}_${new Date().toISOString().split('T')[0]}.pdf`);
+    showToast('PDF exportado com sucesso!');
   };
 
-  const handleExportRawData = () => {
-    setIsExportModalOpen(true);
+  // ── handleAIConsultancy ───────────────────────────────────────────────────
+  const handleAIConsultancy = async () => {
+    setLoading(true);
+    try {
+      const analysis = await api.ai.getAnalysis();
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setAiAnalysisResult(analysis);
+      setIsAIModalOpen(true);
+    } catch (error: any) { showToast('Erro ao gerar consultoria: ' + error.message, 'error'); }
+    finally { setLoading(false); }
   };
 
-  const processExport = (format: 'csv' | 'json') => {
+  // ── handleExportRawData ───────────────────────────────────────────────────
+  const handleExportRawData = (format: 'csv' | 'json') => {
     if (format === 'csv') {
-      // Export CSV
-      const headers = ['Data', 'Turno', 'Plataforma', 'Hora Inicio', 'Hora Fim', 'KM', 'Ganhos', 'Veiculo', 'Motorista'];
       const csvContent = [
-        headers.join(','),
-        ...shifts.map(s => [
-          s.date, 
-          s.shift_type, 
-          s.platform, 
-          s.start_time, 
-          s.end_time, 
-          s.km.toString().replace('.', ','), 
-          s.earnings.toString().replace('.', ','),
-          `"${s.vehicle_name || ''}"`,
-          `"${s.driver_name || ''}"`
-        ].join(','))
+        ['Data', 'Tipo', 'Plataforma', 'Ganhos', 'KM', 'Turno'].join(','),
+        ...shifts.map(s => [s.date, 'turno', s.platform, s.earnings, s.km, s.shift_type].join(','))
       ].join('\n');
-      
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `veiculopro_turnos_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
       showToast('Exportação CSV concluída!');
-    } else if (format === 'json') {
-      // Export JSON
-      const data = {
-        user,
-        shifts,
-        fuelLogs,
-        maintenanceLogs,
-        fixedExpenses,
-        exportedAt: new Date().toISOString()
-      };
-      
+    } else {
+      const data = { user, shifts, fuelLogs, maintenanceLogs, fixedExpenses, exportedAt: new Date().toISOString() };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `veiculopro_backup_${new Date().toISOString().split('T')[0]}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast('Backup JSON completo realizado!');
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      showToast('Backup JSON realizado!');
     }
     setIsExportModalOpen(false);
   };
 
-  const handleAIConsultancy = async () => {
-    setLoading(true);
-    try {
-      const analysis = await api.ai.getAnalysis();
-      
-      // Artificial delay for UX
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setAiAnalysisResult(analysis);
-      setIsAIModalOpen(true);
-    } catch (error: any) {
-      showToast('Erro ao gerar consultoria: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // ── processExport (alias para handleExportRawData) ────────────────────────
+  const processExport = handleExportRawData;
 
-  const handleDeleteShiftGroup = async (date: string, shiftType: string) => {
-    confirmAction({
-      title: 'Excluir Turno',
-      message: 'Tem certeza que deseja excluir este turno e todos os seus registros?',
-      confirmLabel: 'Excluir',
-      variant: 'danger',
-      onConfirm: async () => {
-        await api.shifts.deleteGroup(date, shiftType);
-        showToast('Turno excluído com sucesso!');
-        fetchData();
-      }
-    });
-  };
-
-  const handleDeleteMaintenance = async (id: number) => {
-    confirmAction({
-      title: 'Excluir Manutenção',
-      message: 'Tem certeza que deseja excluir este registro de manutenção?',
-      confirmLabel: 'Excluir',
-      variant: 'danger',
-      onConfirm: async () => {
-        await api.maintenance.delete(id);
-        showToast('Registro de manutenção excluído!');
-        fetchData();
-      }
-    });
-  };
-
-  const handleAddServiceType = async (name: string) => {
-    if (!name.trim()) return;
-    setLoading(true);
-    try {
-      await api.serviceTypes.create({ name });
-      showToast('Tipo de serviço adicionado');
-      fetchData();
-    } catch (error: any) {
-      showToast(error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteServiceType = async (id: number) => {
-    confirmAction({
-      title: 'Excluir Tipo de Serviço',
-      message: 'Tem certeza que deseja excluir este tipo de serviço?',
-      confirmLabel: 'Excluir',
-      variant: 'danger',
-      onConfirm: async () => {
-        await api.serviceTypes.delete(id);
-        showToast('Tipo de serviço excluído');
-        fetchData();
-      }
-    });
-  };
-
-  const handleSaveFixedExpense = async (e: any) => {
-    e.preventDefault();
-    setFormErrors({});
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    
-    setLoading(true);
-    try {
-      const errors: any = {};
-      const value = parseFloat(data.value as string);
-
-      if (isNaN(value) || value <= 0) errors.value = 'Informe o valor da despesa.';
-      if (!data.expense_type) errors.expense_type = 'Selecione o tipo de despesa.';
-
-      if (Object.keys(errors).length > 0) {
-        setFormErrors(errors);
-        return;
-      }
-
-      if (editingFixedExpense) {
-        await api.fixedExpenses.update(editingFixedExpense.id, {
-          date: data.date as string,
-          expense_type: data.expense_type as string,
-          category: data.category as string || 'Outros',
-          value,
-          description: data.description as string,
-          vehicle_name: data.vehicle_name as string,
-          driver_name: data.driver_name as string
-        });
-        setEditingFixedExpense(null);
-      } else {
-        await api.fixedExpenses.create({
-          date: data.date as string,
-          expense_type: data.expense_type as string,
-          category: data.category as string || 'Outros',
-          value,
-          description: data.description as string,
-          vehicle_name: data.vehicle_name as string,
-          driver_name: data.driver_name as string
-        });
-      }
-      
-      showToast(editingFixedExpense ? 'Despesa atualizada!' : 'Despesa registrada!');
-      fetchData();
-      setActiveTab('dashboard');
-    } catch (error: any) {
-      if (error.status === 422 && error.details) {
-        const fieldErrors: any = {};
-        error.details.forEach((detail: any) => {
-          fieldErrors[detail.field] = detail.message;
-        });
-        setFormErrors(fieldErrors);
-        showToast('Verifique os campos destacados', 'error');
-      } else {
-        showToast(error.message, 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteFixedExpense = async (id: number) => {
-    confirmAction({
-      title: 'Excluir Despesa Fixa',
-      message: 'Tem certeza que deseja excluir este registro de despesa fixa?',
-      confirmLabel: 'Excluir',
-      variant: 'danger',
-      onConfirm: async () => {
-        await api.fixedExpenses.delete(id);
-        showToast('Despesa fixa excluída!');
-        fetchData();
-      }
-    });
-  };
-
-  const handleAddFixedExpenseType = async (name: string) => {
-    if (!name.trim()) return;
-    setLoading(true);
-    try {
-      await api.fixedExpenseTypes.create({ name });
-      showToast('Tipo de despesa adicionado!');
-      fetchData();
-    } catch (error: any) {
-      showToast(error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteFixedExpenseType = async (id: number) => {
-    confirmAction({
-      title: 'Excluir Tipo de Despesa',
-      message: 'Tem certeza que deseja excluir este tipo de despesa fixa?',
-      confirmLabel: 'Excluir',
-      variant: 'danger',
-      onConfirm: async () => {
-        await api.fixedExpenseTypes.delete(id);
-        showToast('Tipo de despesa excluído!');
-        fetchData();
-      }
-    });
-  };
 
   if (!isAuthenticated) {
     return (
