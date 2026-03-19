@@ -2,6 +2,7 @@ import React from 'react';
 import { Fuel, Clock, Navigation, Check, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { cn } from './utils';
+import { FormError } from './FormError';
 
 export function AbastecimentosPage() {
   const {
@@ -43,7 +44,7 @@ export function AbastecimentosPage() {
                 <Navigation className="w-4 h-4 text-slate-400" /> Odômetro Atual
               </label>
               <input name="odometer" type="number" step="1" required defaultValue={editingFuel?.odometer || user?.vehicle_odometer || ''} placeholder="KM atual no painel" className={cn("w-full px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-bold", formErrors.odometer ? "border-rose-500" : "border-slate-200 dark:border-slate-700")} />
-              {formErrors.odometer && <p className="text-[10px] font-bold text-rose-500 mt-1">{formErrors.odometer}</p>}
+              <FormError message={formErrors.odometer} />
             </div>
           </div>
 
@@ -71,7 +72,7 @@ export function AbastecimentosPage() {
                   placeholder="0,00" 
                   className={cn("w-full px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-bold", formErrors.fuelPrice ? "border-rose-500" : "border-slate-200 dark:border-slate-700")}
                 />
-                {formErrors.fuelPrice && <p className="text-[10px] font-bold text-rose-500 mt-1">{formErrors.fuelPrice}</p>}
+                <FormError message={formErrors.fuelPrice} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Quantidade (Litros)</label>
@@ -83,7 +84,7 @@ export function AbastecimentosPage() {
                   placeholder="0,00" 
                   className={cn("w-full px-4 py-3 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-bold", formErrors.fuelLiters ? "border-rose-500" : "border-slate-200 dark:border-slate-700")}
                 />
-                {formErrors.fuelLiters && <p className="text-[10px] font-bold text-rose-500 mt-1">{formErrors.fuelLiters}</p>}
+                <FormError message={formErrors.fuelLiters} />
               </div>
             </div>
 

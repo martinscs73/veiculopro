@@ -63,6 +63,7 @@ import { ManutencaoPage } from './components/ManutencaoPage';
 import { DespesasPage } from './components/DespesasPage';
 import { RelatoriosPage } from './components/RelatoriosPage';
 import { ConfiguracoesPage } from './components/ConfiguracoesPage';
+import { FormError } from './components/FormError';
 
 const ComparisonBarChart = lazy(() => import('./components/Charts').then(m => ({ default: m.ComparisonBarChart })));
 const DistributionPieChart = lazy(() => import('./components/Charts').then(m => ({ default: m.DistributionPieChart })));
@@ -150,18 +151,6 @@ const Toast = ({ message, type, onClose }: any) => {
   );
 };
 
-const FormError = ({ message }: { message?: string }) => {
-  if (!message) return null;
-  return (
-    <motion.p 
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      className="text-rose-500 text-[10px] font-bold mt-1 uppercase tracking-wider"
-    >
-      {message}
-    </motion.p>
-  );
-};
 
 // DateFilter moved to src/components/DateFilter.tsx
 

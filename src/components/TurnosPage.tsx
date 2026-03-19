@@ -2,6 +2,7 @@ import React from 'react';
 import { LayoutGrid, Clock, Navigation, Plus, Smartphone, X, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { cn } from './utils';
+import { FormError } from './FormError';
 
 export function TurnosPage() {
   const {
@@ -60,7 +61,7 @@ export function TurnosPage() {
                   formErrors.totalKm ? "border-rose-500 ring-rose-500/10" : "border-slate-200 dark:border-slate-700"
                 )}
               />
-              {formErrors.totalKm && <p className="text-[10px] font-bold text-rose-500 mt-1">{formErrors.totalKm}</p>}
+              <FormError message={formErrors.totalKm} />
             </div>
           </div>
 
@@ -138,7 +139,7 @@ export function TurnosPage() {
                 </div>
               ))}
             </div>
-            {formErrors.platforms && <p className="text-[10px] font-bold text-rose-500 text-center">{formErrors.platforms}</p>}
+            <FormError message={formErrors.platforms} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100 dark:border-slate-800">
