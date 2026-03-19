@@ -15,7 +15,8 @@ import {
   Fuel, 
   Smartphone, 
   Edit3, 
-  Trash2 
+  Trash2,
+  Droplets
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
@@ -169,7 +170,7 @@ export function DashboardPage() {
                       "p-2 rounded-xl text-white shrink-0",
                       alert.type === 'error' ? "bg-rose-500" : alert.type === 'warning' ? "bg-amber-500" : "bg-emerald-500"
                     )}>
-                      <alert.icon className="w-4 h-4" />
+                      {alert.icon === 'oil' ? <Droplets className="w-4 h-4" /> : (typeof alert.icon === 'function' ? <alert.icon className="w-4 h-4" /> : null)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex justify-between items-start">

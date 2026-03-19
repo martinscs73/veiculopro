@@ -354,46 +354,6 @@ export default function App() {
   // ── Confirm modal alias (backward compat — JSX may call setConfirmModal(null)) ──
   const setConfirmModal = (_: any) => dismissConfirm();
 
-  // ── Fuel Efficiency Data (useMemo — was a useMemo in the original App.tsx) ──
-  const fuelEfficiencyData = useMemo(() => {
-    if (!fuelLogs || fuelLogs.length < 2) return [];
-    const sorted = [...fuelLogs].sort((a, b) => (a.date as string) > (b.date as string) ? 1 : -1);
-    const result = [];
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = sorted[i - 1], curr = sorted[i];
-      if (prev.odometer && curr.odometer && curr.liters) {
-        const km = curr.odometer - prev.odometer;
-        if (km > 0 && km < 2000) result.push({ date: curr.date, efficiency: km / curr.liters, km });
-      }
-    }
-    return result;
-  }, [fuelLogs]);
-
-  // ── Vehicle Depreciation (useMemo) ────────────────────────────────────────
-  const vehicleDepreciation = useMemo(() => {
-    if (!user?.vehicle_purchase_price || !user?.vehicle_year) return null;
-    const age = new Date().getFullYear() - parseInt(user.vehicle_year);
-    const depRate = 0.15;
-    const currentValue = user.vehicle_purchase_price * Math.pow(1 - depRate, age);
-    const annualDep = user.vehicle_purchase_price * depRate * Math.pow(1 - depRate, Math.max(0, age - 1));
-    const monthlyDep = annualDep / 12;
-    return { currentValue: Math.max(currentValue, user.vehicle_purchase_price * 0.1), annualDep, monthlyDep, totalDep: user.vehicle_purchase_price - Math.max(currentValue, user.vehicle_purchase_price * 0.1) };
-  }, [user]);
-
-  // ── Maintenance Alerts (useMemo) ──────────────────────────────────────────
-  const maintenanceAlerts = useMemo(() => {
-    if (!maintenanceLogs?.length) return [];
-    const alerts: any[] = [];
-    const oilChanges = maintenanceLogs.filter(m => m.service_type?.toLowerCase().includes('óleo') || m.service_type?.toLowerCase().includes('oil'));
-    if (oilChanges.length) {
-      const last = oilChanges.reduce((a, b) => (a.date > b.date ? a : b));
-      const lastOdo = last.odometer || 0;
-      const currentOdo = user?.vehicle_odometer || 0;
-      if (currentOdo - lastOdo > 4500) alerts.push({ type: 'oil', message: 'Troca de óleo em breve', km: currentOdo - lastOdo });
-    }
-    return alerts;
-  }, [maintenanceLogs, user]);
-
   // ── handleExportPDF ───────────────────────────────────────────────────────
   const handleExportPDF = async (
     exportType: 'summary' | 'full' | 'shifts_only' | 'maintenance_only' | 'fuel_only' | 'expenses_only' = 'full',

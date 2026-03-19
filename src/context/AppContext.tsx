@@ -215,7 +215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const { confirmModal, confirmAction, dismissConfirm } = useConfirm((msg) => showToast(msg, 'error'));
 
   const appData = useAppData(isAuthenticated, activeTab, filterStartDate, filterEndDate);
-  const statsHook = useStats(appData.shifts, appData.fuelLogs, appData.maintenanceLogs, appData.fixedExpenses);
+  const statsHook = useStats(appData.shifts, appData.fuelLogs, appData.maintenanceLogs, appData.fixedExpenses, appData.user);
 
   const isPro = appData.user?.subscription_plan === 'pro';
 
