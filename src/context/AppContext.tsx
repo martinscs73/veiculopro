@@ -150,6 +150,16 @@ interface AppContextType {
   isServiceModalOpen: boolean;
   setIsServiceModalOpen: (v: boolean) => void;
   isPro: boolean;
+
+  // Action handlers (available to all pages via context)
+  handleDeleteShiftGroup: (date: string, shiftType: string) => void;
+  handleDeleteFuel: (id: number) => void;
+  handleDeleteMaintenance: (id: number) => void;
+  handleDeleteFixedExpense: (id: number) => void;
+  handleAddServiceType: (name: string) => Promise<void>;
+  handleDeleteServiceType: (id: number) => void;
+  handleAddFixedExpenseType: (name: string) => Promise<void>;
+  handleDeleteFixedExpenseType: (id: number) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -299,6 +309,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     window.location.reload();
   };
 
+  // ── CRUD action handlers ──────────────────────────────────────────────────
+  const handleDeleteShiftGroup = (date: string, shiftType: string) =>
+    confirmAction({ title: 'Excluir Turno', message: 'Excluir turno e todos os registros?', confirmLabel: 'Excluir', variant: 'danger',
+      onConfirm: async () => { await api.shifts.deleteGroup(date, shiftType); showToast('Turno excluído!'); appData.fetchData(); } });
+
+  const handleDeleteFuel = (id: number) =>
+    confirmAction({ title: 'Excluir Abastecimento', message: 'Deseja excluir este registro?', confirmLabel: 'Excluir', variant: 'danger',
+      onConfirm: async () => { await api.fuel.delete(id); showToast('Abastecimento excluído!'); appData.fetchData(); } });
+
+  const handleDeleteMaintenance = (id: number) =>
+    confirmAction({ title: 'Excluir Manutenção', message: 'Deseja excluir este registro?', confirmLabel: 'Excluir', variant: 'danger',
+      onConfirm: async () => { await api.maintenance.delete(id); showToast('Manutenção excluída!'); appData.fetchData(); } });
+
+  const handleDeleteFixedExpense = (id: number) =>
+    confirmAction({ title: 'Excluir Despesa', message: 'Excluir este registro?', confirmLabel: 'Excluir', variant: 'danger',
+      onConfirm: async () => { await api.fixedExpenses.delete(id); showToast('Despesa excluída!'); appData.fetchData(); } });
+
+  const handleAddServiceType = async (name: string) => {
+    if (!name.trim()) return;
+    setLoading(true);
+    try { await api.serviceTypes.create({ name }); showToast('Tipo adicionado'); appData.fetchData(); }
+    catch (error: any) { showToast(error.message, 'error'); } finally { setLoading(false); }
+  };
+
+  const handleDeleteServiceType = (id: number) =>
+    confirmAction({ title: 'Excluir Tipo', message: 'Excluir este tipo de serviço?', confirmLabel: 'Excluir', variant: 'danger',
+      onConfirm: async () => { await api.serviceTypes.delete(id); showToast('Tipo excluído'); appData.fetchData(); } });
+
+  const handleAddFixedExpenseType = async (name: string) => {
+    if (!name.trim()) return;
+    setLoading(true);
+    try { await api.fixedExpenseTypes.create({ name }); showToast('Tipo adicionado!'); appData.fetchData(); }
+    catch (error: any) { showToast(error.message, 'error'); } finally { setLoading(false); }
+  };
+
+  const handleDeleteFixedExpenseType = (id: number) =>
+    confirmAction({ title: 'Excluir Tipo', message: 'Excluir este tipo de despesa?', confirmLabel: 'Excluir', variant: 'danger',
+      onConfirm: async () => { await api.fixedExpenseTypes.delete(id); showToast('Tipo excluído!'); appData.fetchData(); } });
+
   const value: AppContextType = {
     isAuthenticated, setIsAuthenticated,
     handleLogin, handleRegister, handleGoogleLogin, handleLogout,
@@ -331,6 +380,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isHealthCollapsed, setIsHealthCollapsed, showInsight, setShowInsight,
     isServiceModalOpen, setIsServiceModalOpen,
     isPro,
+    handleDeleteShiftGroup, handleDeleteFuel, handleDeleteMaintenance, handleDeleteFixedExpense,
+    handleAddServiceType, handleDeleteServiceType, handleAddFixedExpenseType, handleDeleteFixedExpenseType,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
